@@ -45,6 +45,8 @@ latest_input = None
 if st.button("🔄 ดึงข้อมูล & สร้างโมเดลจาก yfinance"):
     try:
         model, latest_input = load_data_and_train_model(ticker)
+        st.session_state["model"] = model
+        st.session_state["latest_input"] = latest_input
         st.success("✅ สร้างโมเดลและเตรียมข้อมูลล่าสุดเรียบร้อยแล้ว")
         st.write("**ฟีเจอร์ล่าสุดที่ใช้ในการทำนาย:**")
         st.write(dict(zip(["MA20", "MA50", "MA100", "RSI", "Upper", "Lower"], latest_input)))
@@ -52,10 +54,12 @@ if st.button("🔄 ดึงข้อมูล & สร้างโมเดล�
         st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูลหรือฝึกโมเดล: {e}")
 
 if st.button("📊 ทำนายแนวโน้มราคาหุ้นจากข้อมูลล่าสุด"):
-    if not model or latest_input is None:
+    if "model" not in st.session_state or "latest_input" not in st.session_state:
         st.error("กรุณากดปุ่มด้านบนเพื่อโหลดข้อมูลและฝึกโมเดลก่อน")
     else:
         try:
+            model = st.session_state["model"]
+            latest_input = st.session_state["latest_input"]
             prediction = model.predict([latest_input])[0]
             result = "Up 📈" if prediction == 1 else "Down 📉"
             st.success(f"แนวโน้มที่คาดการณ์สำหรับ {ticker}: {result}")
