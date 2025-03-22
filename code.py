@@ -15,7 +15,3 @@ def predict_stock_trend(input_data):
     prediction = loaded_model.predict([input_data])
     return "Up" if prediction[0] == 1 else "Down"
 
-# ตัวอย่างการใช้งานโมเดล
-sample_input = X_test.iloc[0].values
-predicted_trend = predict_stock_trend(sample_input)
-print(f"Predicted Trend: {predicted_trend}")
