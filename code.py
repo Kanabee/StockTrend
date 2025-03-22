@@ -7,10 +7,10 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 
 st.set_page_config(page_title="Stock Trend Prediction", layout="centered")
-st.title("📈 ทำนายแนวโน้มราคาหุ้นด้วย Logistic Regression")
+st.title("📈 Trend Forcase by Logistic Regression")
 
 # อินพุตชื่อหุ้น
-ticker = st.text_input("กรุณากรอกรหัสหุ้น (เช่น PTT.BK):", "PTT.BK")
+ticker = st.text_input("Stock Name")
 
 # ฟังก์ชันดึงข้อมูลและสร้างโมเดลจากข้อมูลจริง
 @st.cache_data(show_spinner=False)
@@ -42,20 +42,20 @@ def load_data_and_train_model(ticker):
     return model, latest_features, df
 
 # ปุ่มโหลดข้อมูลและฝึกโมเดล
-if st.button("🔄 ดึงข้อมูล & สร้างโมเดลจาก yfinance"):
+if st.button("🔄 Gte Data from yfinance"):
     try:
         model, latest_input, df_plot = load_data_and_train_model(ticker)
         st.session_state.model = model
         st.session_state.latest_input = latest_input
         st.session_state.df_plot = df_plot
-        st.success("✅ สร้างโมเดลและเตรียมข้อมูลล่าสุดเรียบร้อยแล้ว")
-        st.write("**ฟีเจอร์ล่าสุดที่ใช้ในการทำนาย:**")
+        st.success("✅ Model Complete ")
+        st.write("**Feature for Prediction:**")
         st.write(dict(zip(["MA20", "MA50", "MA100", "RSI", "Upper", "Lower"], latest_input)))
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูลหรือฝึกโมเดล: {e}")
 
 # ปุ่มทำนาย
-if st.button("📊 ทำนายแนวโน้มราคาหุ้นจากข้อมูลล่าสุด"):
+if st.button("📊 Prediction"):
     if "model" not in st.session_state or "latest_input" not in st.session_state:
         st.error("กรุณากดปุ่มด้านบนเพื่อโหลดข้อมูลและฝึกโมเดลก่อน")
     else:
@@ -65,10 +65,10 @@ if st.button("📊 ทำนายแนวโน้มราคาหุ้น�
             df_plot = st.session_state.df_plot
             prediction = model.predict([latest_input])[0]
             result = "Up 📈" if prediction == 1 else "Down 📉"
-            st.success(f"แนวโน้มที่คาดการณ์สำหรับ {ticker}: {result}")
+            st.success(f"Trend Forcase {ticker}: {result}")
 
             # แสดงกราฟราคาหุ้นย้อนหลัง
-            st.subheader("📊 กราฟราคาปิดย้อนหลัง 5 ปี")
+            st.subheader("📊 5 year Stock Price")
             fig, ax = plt.subplots(figsize=(12, 5))
             ax.plot(df_plot.index, df_plot["Close"], label="Close", linewidth=1)
             ax.plot(df_plot.index, df_plot["MA20"], label="MA20", linestyle="--")
