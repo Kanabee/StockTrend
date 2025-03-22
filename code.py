@@ -16,9 +16,9 @@ ticker = st.text_input("Stock Name")
 @st.cache_data(show_spinner=False)
 def load_data_and_train_model(ticker):
     df = yf.Ticker(ticker).history(period="5y")[["Close"]]
-    df["MA20"] = df["Close"].rolling(window=20).mean()
-    df["MA50"] = df["Close"].rolling(window=50).mean()
-    df["MA100"] = df["Close"].rolling(window=100).mean()
+    df["MA5"] = df["Close"].rolling(window=5).mean()
+    df["MA25"] = df["Close"].rolling(window=25).mean()
+    df["MA75"] = df["Close"].rolling(window=75).mean()
     delta = df["Close"].diff()
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
@@ -32,7 +32,7 @@ def load_data_and_train_model(ticker):
     df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
     df = df.dropna()
 
-    X = df[["MA20", "MA50", "MA100", "RSI", "Upper", "Lower"]]
+    X = df[["MA5", "MA25", "MA75", "RSI", "Upper", "Lower"]]
     y = df["Target"]
 
     model = LogisticRegression()
@@ -50,7 +50,7 @@ if st.button("🔄 Gte Data from yfinance"):
         st.session_state.df_plot = df_plot
         st.success("✅ Model Complete ")
         st.write("**Feature for Prediction:**")
-        st.write(dict(zip(["MA20", "MA50", "MA100", "RSI", "Upper", "Lower"], latest_input)))
+        st.write(dict(zip(["MA5", "MA25", "MA75", "RSI", "Upper", "Lower"], latest_input)))
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูลหรือฝึกโมเดล: {e}")
 
@@ -71,9 +71,9 @@ if st.button("📊 Prediction"):
             st.subheader("📊 5 year Stock Price")
             fig, ax = plt.subplots(figsize=(12, 5))
             ax.plot(df_plot.index, df_plot["Close"], label="Close", linewidth=1)
-            ax.plot(df_plot.index, df_plot["MA20"], label="MA20", linestyle="--")
-            ax.plot(df_plot.index, df_plot["MA50"], label="MA50", linestyle="--")
-            ax.plot(df_plot.index, df_plot["MA100"], label="MA100", linestyle="--")
+            ax.plot(df_plot.index, df_plot["MA5"], label="MA5", linestyle="--")
+            ax.plot(df_plot.index, df_plot["MA25"], label="MA25", linestyle="--")
+            ax.plot(df_plot.index, df_plot["MA75"], label="MA75", linestyle="--")
             ax.set_title(f"Historical Close Price with MAs: {ticker}")
             ax.set_xlabel("Date")
             ax.set_ylabel("Price")
