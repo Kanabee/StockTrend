@@ -32,14 +32,6 @@ def save_model_from_input():
 # สร้างโมเดลจำลองและบันทึก
 model_filename = save_model_from_input()
 
-# ปุ่มดาวน์โหลดไฟล์ .pkl
-with open(model_filename, "rb") as f:
-    st.download_button(
-        label="📥 ดาวน์โหลดโมเดล logistic_regression_stock.pkl",
-        data=f,
-        file_name=model_filename,
-        mime="application/octet-stream"
-    )
 
 # โหลดและใช้โมเดลทันที
 st.subheader("ใช้โมเดลที่สร้างไว้ล่วงหน้า")
