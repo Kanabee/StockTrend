@@ -6,6 +6,7 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_squared_error
 
 st.set_page_config(page_title="Stock Trend Prediction", layout="centered")
 st.title("📈 ทำนายแนวโน้มราคาหุ้น: Logistic Regression vs ARIMA")
