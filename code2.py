@@ -13,10 +13,34 @@ st.title("📈 ทำนายแนวโน้มราคาหุ้น: Log
 # อินพุตชื่อหุ้น
 ticker = st.text_input("กรุณากรอกรหัสหุ้น (เช่น PTT.BK):", "PTT.BK")
 
+# คำนวณ Spread ตามช่วงราคาล่าสุด
+@st.cache_data(show_spinner=False)
+def get_dynamic_spread(latest_price):
+    if latest_price < 2:
+        return 0.01
+    elif latest_price < 5:
+        return 0.02
+    elif latest_price < 10:
+        return 0.05
+    elif latest_price < 25:
+        return 0.10
+    elif latest_price < 100:
+        return 0.25
+    elif latest_price < 200:
+        return 0.50
+    elif latest_price < 400:
+        return 1.00
+    else:
+        return 2.00
+
 # ฟังก์ชันดึงข้อมูลและสร้างโมเดลจากข้อมูลจริง
 @st.cache_data(show_spinner=False)
 def load_data_and_models(ticker):
     df = yf.Ticker(ticker).history(period="5y")[["Close"]]
+    latest_price = df["Close"].iloc[-1]
+    spread = get_dynamic_spread(latest_price)
+    df["Close"] = df["Close"] - spread  # หัก Spread ตามช่วงราคาหุ้น
+
     df["MA20"] = df["Close"].rolling(window=20).mean()
     df["MA50"] = df["Close"].rolling(window=50).mean()
     df["MA100"] = df["Close"].rolling(window=100).mean()
@@ -46,19 +70,19 @@ def load_data_and_models(ticker):
     arima_result = arima_model.fit()
     arima_forecast = arima_result.forecast(steps=7)
 
-    return df, lr_model, latest_features, arima_forecast
+    return df, lr_model, latest_features, arima_forecast, spread
 
 # ปุ่มโหลดข้อมูลและฝึกโมเดล
 if st.button("🚀 โหลดข้อมูลและสร้างโมเดลทั้งสองแบบ"):
     try:
-        df_plot, lr_model, latest_input, arima_forecast = load_data_and_models(ticker)
+        df_plot, lr_model, latest_input, arima_forecast, used_spread = load_data_and_models(ticker)
         st.session_state.df_plot = df_plot
         st.session_state.lr_model = lr_model
         st.session_state.latest_input = latest_input
         st.session_state.arima_forecast = arima_forecast
-        st.success("✅ โหลดข้อมูลและสร้างโมเดล Logistic + ARIMA เรียบร้อยแล้ว")
+        st.success(f"✅ โหลดข้อมูลและสร้างโมเดลเรียบร้อยแล้ว (ใช้ Spread {used_spread:.2f} บาท)")
 
-        st.subheader("📊 กราฟราคาปิดย้อนหลัง 5 ปี")
+        st.subheader("📊 กราฟราคาปิดย้อนหลัง 5 ปี (ปรับ Spread แล้ว)")
         fig, ax = plt.subplots(figsize=(12, 5))
         ax.plot(df_plot.index, df_plot["Close"], label="Close", linewidth=1)
         ax.plot(df_plot.index, df_plot["MA20"], label="MA20", linestyle="--")
@@ -71,7 +95,6 @@ if st.button("🚀 โหลดข้อมูลและสร้างโม�
         ax.grid(True)
         st.pyplot(fig)
 
-        # แสดงฟีเจอร์ล่าสุด
         st.subheader("📌 ฟีเจอร์ล่าสุด (สำหรับ Logistic Regression)")
         st.write(dict(zip(["MA20", "MA50", "MA100", "RSI", "Upper", "Lower"], latest_input)))
 
