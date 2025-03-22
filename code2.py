@@ -15,7 +15,6 @@ st.title("📈 ทำนายแนวโน้มราคาหุ้น: Log
 ticker = st.text_input("กรุณากรอกรหัสหุ้น (เช่น PTT.BK):", "PTT.BK")
 
 # คำนวณ Spread ตามช่วงราคาล่าสุด
-@st.cache_data(show_spinner=False)
 def get_dynamic_spread(latest_price):
     if latest_price < 2:
         return 0.01
@@ -34,13 +33,12 @@ def get_dynamic_spread(latest_price):
     else:
         return 2.00
 
-# ฟังก์ชันดึงข้อมูลและสร้างโมเดลจากข้อมูลจริง
-@st.cache_data(show_spinner=False)
+# ฟังก์ชันดึงข้อมูลและสร้างโมเดลจากข้อมูลจริง พร้อม train/test split สำหรับ ARIMA
 def load_data_and_models(ticker):
     df = yf.Ticker(ticker).history(period="5y")[["Close"]]
     latest_price = df["Close"].iloc[-1]
     spread = get_dynamic_spread(latest_price)
-    df["Close"] = df["Close"] - spread  # หัก Spread ตามช่วงราคาหุ้น
+    df["Close"] = df["Close"] - spread
 
     df["MA20"] = df["Close"].rolling(window=20).mean()
     df["MA50"] = df["Close"].rolling(window=50).mean()
@@ -74,14 +72,18 @@ def load_data_and_models(ticker):
     mse = mean_squared_error(test, arima_forecast)
 
     return df, lr_model, latest_features, arima_forecast, spread, test, mse
+
 # ปุ่มโหลดข้อมูลและฝึกโมเดล
 if st.button("🚀 โหลดข้อมูลและสร้างโมเดลทั้งสองแบบ"):
     try:
-        df_plot, lr_model, latest_input, arima_forecast, used_spread = load_data_and_models(ticker)
+        results = load_data_and_models(ticker)
+        df_plot, lr_model, latest_input, arima_forecast, used_spread, arima_test, arima_mse = results
         st.session_state.df_plot = df_plot
         st.session_state.lr_model = lr_model
         st.session_state.latest_input = latest_input
         st.session_state.arima_forecast = arima_forecast
+        st.session_state.arima_test = arima_test
+        st.session_state.arima_mse = arima_mse
         st.success(f"✅ โหลดข้อมูลและสร้างโมเดลเรียบร้อยแล้ว (ใช้ Spread {used_spread:.2f} บาท)")
 
         st.subheader("📊 กราฟราคาปิดย้อนหลัง 5 ปี (ปรับ Spread แล้ว)")
@@ -109,6 +111,8 @@ if st.button("🔮 ทำนายแนวโน้มด้วย Logistic Reg
         lr_model = st.session_state.lr_model
         latest_input = st.session_state.latest_input
         arima_forecast = st.session_state.arima_forecast
+        arima_test = st.session_state.arima_test
+        arima_mse = st.session_state.arima_mse
 
         lr_result = lr_model.predict([latest_input])[0]
         lr_trend = "Up 📈" if lr_result == 1 else "Down 📉"
@@ -116,17 +120,21 @@ if st.button("🔮 ทำนายแนวโน้มด้วย Logistic Reg
         st.subheader("📈 ผลลัพธ์ Logistic Regression")
         st.success(f"แนวโน้มที่คาดการณ์: {lr_trend}")
 
-        st.subheader("🧠 ผลลัพธ์ ARIMA (พยากรณ์ราคาปิด 7 วันถัดไป)")
-        forecast_df = pd.DataFrame({"วันถัดไป": range(1,8), "ราคาที่คาดการณ์ (บาท)": arima_forecast})
-        st.dataframe(forecast_df.set_index("วันถัดไป"))
+        st.subheader("🧠 ผลลัพธ์ ARIMA (พยากรณ์ราคาปิดช่วงทดสอบ)")
+        forecast_df = pd.DataFrame({"วันที่": arima_test.index, "จริง": arima_test.values, "พยากรณ์": arima_forecast})
+        st.dataframe(forecast_df.set_index("วันที่"))
+        st.metric(label="📉 Mean Squared Error (MSE)", value=f"{arima_mse:.4f}")
 
         fig2, ax2 = plt.subplots()
-        ax2.plot(forecast_df.index, forecast_df["ราคาที่คาดการณ์ (บาท)"], marker="o")
-        ax2.set_title("ARIMA Forecast (7 วันถัดไป)")
-        ax2.set_xlabel("วัน")
-        ax2.set_ylabel("ราคาที่คาดการณ์")
+        ax2.plot(arima_test.index, arima_test.values, label="จริง")
+        ax2.plot(arima_test.index, arima_forecast, label="พยากรณ์", linestyle="--")
+        ax2.set_title("ARIMA Forecast vs Actual (ช่วงทดสอบ")
+        ax2.set_xlabel("วันที่")
+        ax2.set_ylabel("ราคาปิด")
+        ax2.legend()
         ax2.grid(True)
         st.pyplot(fig2)
 
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการทำนาย: {e}")
+
