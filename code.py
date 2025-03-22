@@ -51,21 +51,6 @@ if st.button("🔄 ดึงข้อมูล & สร้างโมเดล�
         st.success("✅ สร้างโมเดลและเตรียมข้อมูลล่าสุดเรียบร้อยแล้ว")
         st.write("**ฟีเจอร์ล่าสุดที่ใช้ในการทำนาย:**")
         st.write(dict(zip(["MA20", "MA50", "MA100", "RSI", "Upper", "Lower"], latest_input)))
-
-        # แสดงกราฟราคาหุ้นย้อนหลัง
-        st.subheader("📊 กราฟราคาปิดย้อนหลัง 5 ปี")
-        fig, ax = plt.subplots(figsize=(12, 5))
-        ax.plot(df_plot.index, df_plot["Close"], label="Close", linewidth=1)
-        ax.plot(df_plot.index, df_plot["MA20"], label="MA20", linestyle="--")
-        ax.plot(df_plot.index, df_plot["MA50"], label="MA50", linestyle="--")
-        ax.plot(df_plot.index, df_plot["MA100"], label="MA100", linestyle="--")
-        ax.set_title(f"Historical Close Price with MAs: {ticker}")
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Price")
-        ax.legend()
-        ax.grid(True)
-        st.pyplot(fig)
-
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูลหรือฝึกโมเดล: {e}")
 
@@ -77,8 +62,23 @@ if st.button("📊 ทำนายแนวโน้มราคาหุ้น�
         try:
             model = st.session_state.model
             latest_input = st.session_state.latest_input
+            df_plot = st.session_state.df_plot
             prediction = model.predict([latest_input])[0]
             result = "Up 📈" if prediction == 1 else "Down 📉"
             st.success(f"แนวโน้มที่คาดการณ์สำหรับ {ticker}: {result}")
+
+            # แสดงกราฟราคาหุ้นย้อนหลัง
+            st.subheader("📊 กราฟราคาปิดย้อนหลัง 5 ปี")
+            fig, ax = plt.subplots(figsize=(12, 5))
+            ax.plot(df_plot.index, df_plot["Close"], label="Close", linewidth=1)
+            ax.plot(df_plot.index, df_plot["MA20"], label="MA20", linestyle="--")
+            ax.plot(df_plot.index, df_plot["MA50"], label="MA50", linestyle="--")
+            ax.plot(df_plot.index, df_plot["MA100"], label="MA100", linestyle="--")
+            ax.set_title(f"Historical Close Price with MAs: {ticker}")
+            ax.set_xlabel("Date")
+            ax.set_ylabel("Price")
+            ax.legend()
+            ax.grid(True)
+            st.pyplot(fig)
         except Exception as e:
             st.error(f"เกิดข้อผิดพลาดในการทำนาย: {e}")
