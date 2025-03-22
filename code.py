@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 
 st.set_page_config(page_title="Stock Trend Prediction", layout="centered")
-st.title("📈 Trend Forcase by Logistic Regression")
+st.title("📈 Trend Forcasting")
 
 # อินพุตชื่อหุ้น
 ticker = st.text_input("Stock Name")
