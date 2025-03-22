@@ -64,14 +64,15 @@ def load_data_and_models(ticker):
     lr_model.fit(X, y)
     latest_features = X.iloc[-1].values
 
-    # ARIMA Forecasting
-    close_series = df["Close"]
-    arima_model = ARIMA(close_series, order=(5,1,0))
+    # ARIMA with train-test split
+    split_idx = int(len(df) * 0.8)
+    train, test = df["Close"][:split_idx], df["Close"][split_idx:]
+    arima_model = ARIMA(train, order=(5,1,0))
     arima_result = arima_model.fit()
-    arima_forecast = arima_result.forecast(steps=7)
+    arima_forecast = arima_result.forecast(steps=len(test))
+    mse = mean_squared_error(test, arima_forecast)
 
-    return df, lr_model, latest_features, arima_forecast, spread
-
+    return df, lr_model, latest_features, arima_forecast, spread, test, mse
 # ปุ่มโหลดข้อมูลและฝึกโมเดล
 if st.button("🚀 โหลดข้อมูลและสร้างโมเดลทั้งสองแบบ"):
     try:
