@@ -3,7 +3,6 @@ import pickle
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
-import os
 
 st.title("ทำนายแนวโน้มราคาหุ้นด้วย Logistic Regression")
 
@@ -32,7 +31,6 @@ def save_model_from_input():
 # สร้างโมเดลจำลองและบันทึก
 model_filename = save_model_from_input()
 
-
 # โหลดและใช้โมเดลทันที
 st.subheader("ใช้โมเดลที่สร้างไว้ล่วงหน้า")
 def predict_stock_trend(input_data):
@@ -54,3 +52,4 @@ if input_str:
             st.success(f"แนวโน้มที่คาดการณ์: {result}")
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการประมวลผลข้อมูล: {e}")
+
