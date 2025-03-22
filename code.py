@@ -5,10 +5,10 @@ import pandas as pd
 import yfinance as yf
 from sklearn.linear_model import LogisticRegression
 
-st.title("ทำนายแนวโน้มราคาหุ้นด้วย Logistic Regression")
+st.title("TrendForcase By Logistic Regression")
 
 # อินพุตชื่อหุ้น
-ticker = st.text_input("กรุณากรอกรหัสหุ้น (เช่น PTT.BK):", "PTT.BK")
+ticker = st.text_input("Stock Name")
 
 # ฟังก์ชันดึงข้อมูลและสร้างโมเดลจากข้อมูลจริง
 @st.cache_data(show_spinner=False)
@@ -42,18 +42,18 @@ def load_data_and_train_model(ticker):
 model = None
 latest_input = None
 
-if st.button("🔄 ดึงข้อมูล & สร้างโมเดลจาก yfinance"):
+if st.button("🔄 calculate data from yfinance"):
     try:
         model, latest_input = load_data_and_train_model(ticker)
         st.session_state["model"] = model
         st.session_state["latest_input"] = latest_input
-        st.success("✅ สร้างโมเดลและเตรียมข้อมูลล่าสุดเรียบร้อยแล้ว")
-        st.write("**ฟีเจอร์ล่าสุดที่ใช้ในการทำนาย:**")
+        st.success("✅ Built Model")
+        st.write("**Feature for predict :**")
         st.write(dict(zip(["MA20", "MA50", "MA100", "RSI", "Upper", "Lower"], latest_input)))
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูลหรือฝึกโมเดล: {e}")
+        st.error(f"information error: {e}")
 
-if st.button("📊 ทำนายแนวโน้มราคาหุ้นจากข้อมูลล่าสุด"):
+if st.button("📊 Trend Forcase"):
     if "model" not in st.session_state or "latest_input" not in st.session_state:
         st.error("กรุณากดปุ่มด้านบนเพื่อโหลดข้อมูลและฝึกโมเดลก่อน")
     else:
@@ -62,6 +62,6 @@ if st.button("📊 ทำนายแนวโน้มราคาหุ้น�
             latest_input = st.session_state["latest_input"]
             prediction = model.predict([latest_input])[0]
             result = "Up 📈" if prediction == 1 else "Down 📉"
-            st.success(f"แนวโน้มที่คาดการณ์สำหรับ {ticker}: {result}")
+            st.success(f"Trend {ticker}: {result}")
         except Exception as e:
-            st.error(f"เกิดข้อผิดพลาดในการทำนาย: {e}")
+            st.error(f"Prediction Error: {e}")
