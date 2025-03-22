@@ -26,9 +26,9 @@ def load_data_and_train_model(ticker):
     avg_loss = loss.rolling(window=14).mean()
     rs = avg_gain / avg_loss
     df["RSI"] = 100 - (100 / (1 + rs))
-    df["STD20"] = df["Close"].rolling(window=20).std()
-    df["Upper"] = df["MA20"] + 2 * df["STD20"]
-    df["Lower"] = df["MA20"] - 2 * df["STD20"]
+    df["STD25"] = df["Close"].rolling(window=25).std()
+    df["Upper"] = df["MA25"] + 2 * df["STD25"]
+    df["Lower"] = df["MA25"] - 2 * df["STD25"]
     df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
     df = df.dropna()
 
