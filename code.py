@@ -11,7 +11,8 @@ st.title("ทำนายแนวโน้มราคาหุ้นด้ว�
 ticker = st.text_input("กรุณากรอกรหัสหุ้น (เช่น PTT.BK):", "PTT.BK")
 
 # ฟังก์ชันดึงข้อมูลและสร้างโมเดลจากข้อมูลจริง
-def save_model_from_yfinance(ticker):
+@st.cache_data(show_spinner=False)
+def load_data_and_train_model(ticker):
     df = yf.Ticker(ticker).history(period="5y")[["Close"]]
     df["MA20"] = df["Close"].rolling(window=20).mean()
     df["MA50"] = df["Close"].rolling(window=50).mean()
@@ -35,37 +36,28 @@ def save_model_from_yfinance(ticker):
     model = LogisticRegression()
     model.fit(X, y)
 
-    model_filename = "logistic_regression_stock.pkl"
-    with open(model_filename, "wb") as file:
-        pickle.dump(model, file)
-    return model_filename
+    latest_features = X.iloc[-1].values  # แถวล่าสุด
+    return model, latest_features
 
-# โหลดและใช้โมเดลทันที
-def predict_stock_trend(input_data):
-    with open(model_filename, "rb") as file:
-        loaded_model = pickle.load(file)
-    prediction = loaded_model.predict([input_data])
-    return "Up 📈" if prediction[0] == 1 else "Down 📉"
+model = None
+latest_input = None
 
-# ปุ่มสร้างโมเดลจากข้อมูลจริง
-ticker_valid = False
 if st.button("🔄 ดึงข้อมูล & สร้างโมเดลจาก yfinance"):
     try:
-        model_filename = save_model_from_yfinance(ticker)
-        st.success("✅ สร้างโมเดลเรียบร้อยแล้วจากข้อมูลหุ้นจริง")
-        ticker_valid = True
+        model, latest_input = load_data_and_train_model(ticker)
+        st.success("✅ สร้างโมเดลและเตรียมข้อมูลล่าสุดเรียบร้อยแล้ว")
+        st.write("**ฟีเจอร์ล่าสุดที่ใช้ในการทำนาย:**")
+        st.write(dict(zip(["MA20", "MA50", "MA100", "RSI", "Upper", "Lower"], latest_input)))
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูลหรือฝึกโมเดล: {e}")
 
-
-if st.button("📊 ทำนายแนวโน้มราคาหุ้น") and input_str:
-    try:
-        input_data = np.array([float(x.strip()) for x in input_str.split(",")])
-        if len(input_data) != 6:
-            st.error("กรุณากรอกข้อมูลฟีเจอร์ให้ครบ 6 ค่า")
-        else:
-            result = predict_stock_trend(input_data)
+if st.button("📊 ทำนายแนวโน้มราคาหุ้นจากข้อมูลล่าสุด"):
+    if not model or latest_input is None:
+        st.error("กรุณากดปุ่มด้านบนเพื่อโหลดข้อมูลและฝึกโมเดลก่อน")
+    else:
+        try:
+            prediction = model.predict([latest_input])[0]
+            result = "Up 📈" if prediction == 1 else "Down 📉"
             st.success(f"แนวโน้มที่คาดการณ์สำหรับ {ticker}: {result}")
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการประมวลผลข้อมูล: {e}")
-
+        except Exception as e:
+            st.error(f"เกิดข้อผิดพลาดในการทำนาย: {e}")
