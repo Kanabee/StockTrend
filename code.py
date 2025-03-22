@@ -3,12 +3,14 @@ import pickle
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 
-st.title("TrendForcase By Logistic Regression")
+st.set_page_config(page_title="Stock Trend Prediction", layout="centered")
+st.title("📈 ทำนายแนวโน้มราคาหุ้นด้วย Logistic Regression")
 
 # อินพุตชื่อหุ้น
-ticker = st.text_input("Stock Name")
+ticker = st.text_input("กรุณากรอกรหัสหุ้น (เช่น PTT.BK):", "PTT.BK")
 
 # ฟังก์ชันดึงข้อมูลและสร้างโมเดลจากข้อมูลจริง
 @st.cache_data(show_spinner=False)
@@ -37,31 +39,46 @@ def load_data_and_train_model(ticker):
     model.fit(X, y)
 
     latest_features = X.iloc[-1].values  # แถวล่าสุด
-    return model, latest_features
+    return model, latest_features, df
 
-model = None
-latest_input = None
-
-if st.button("🔄 calculate data from yfinance"):
+# ปุ่มโหลดข้อมูลและฝึกโมเดล
+if st.button("🔄 ดึงข้อมูล & สร้างโมเดลจาก yfinance"):
     try:
-        model, latest_input = load_data_and_train_model(ticker)
-        st.session_state["model"] = model
-        st.session_state["latest_input"] = latest_input
-        st.success("✅ Built Model")
-        st.write("**Feature for predict :**")
+        model, latest_input, df_plot = load_data_and_train_model(ticker)
+        st.session_state.model = model
+        st.session_state.latest_input = latest_input
+        st.session_state.df_plot = df_plot
+        st.success("✅ สร้างโมเดลและเตรียมข้อมูลล่าสุดเรียบร้อยแล้ว")
+        st.write("**ฟีเจอร์ล่าสุดที่ใช้ในการทำนาย:**")
         st.write(dict(zip(["MA20", "MA50", "MA100", "RSI", "Upper", "Lower"], latest_input)))
-    except Exception as e:
-        st.error(f"information error: {e}")
 
-if st.button("📊 Trend Forcase"):
+        # แสดงกราฟราคาหุ้นย้อนหลัง
+        st.subheader("📊 กราฟราคาปิดย้อนหลัง 5 ปี")
+        fig, ax = plt.subplots(figsize=(12, 5))
+        ax.plot(df_plot.index, df_plot["Close"], label="Close", linewidth=1)
+        ax.plot(df_plot.index, df_plot["MA20"], label="MA20", linestyle="--")
+        ax.plot(df_plot.index, df_plot["MA50"], label="MA50", linestyle="--")
+        ax.plot(df_plot.index, df_plot["MA100"], label="MA100", linestyle="--")
+        ax.set_title(f"Historical Close Price with MAs: {ticker}")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Price")
+        ax.legend()
+        ax.grid(True)
+        st.pyplot(fig)
+
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูลหรือฝึกโมเดล: {e}")
+
+# ปุ่มทำนาย
+if st.button("📊 ทำนายแนวโน้มราคาหุ้นจากข้อมูลล่าสุด"):
     if "model" not in st.session_state or "latest_input" not in st.session_state:
         st.error("กรุณากดปุ่มด้านบนเพื่อโหลดข้อมูลและฝึกโมเดลก่อน")
     else:
         try:
-            model = st.session_state["model"]
-            latest_input = st.session_state["latest_input"]
+            model = st.session_state.model
+            latest_input = st.session_state.latest_input
             prediction = model.predict([latest_input])[0]
             result = "Up 📈" if prediction == 1 else "Down 📉"
-            st.success(f"Trend {ticker}: {result}")
+            st.success(f"แนวโน้มที่คาดการณ์สำหรับ {ticker}: {result}")
         except Exception as e:
-            st.error(f"Prediction Error: {e}")
+            st.error(f"เกิดข้อผิดพลาดในการทำนาย: {e}")
