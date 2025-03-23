@@ -55,7 +55,7 @@ if st.button("🔄 データを取得"):
         st.error(f"エーラ: {e}")
 
 # ปุ่มทำนาย
-if st.button("📊 Prediction"):
+if st.button("📊 予測"):
     if "model" not in st.session_state or "latest_input" not in st.session_state:
         st.error("กรุณากดปุ่มด้านบนเพื่อโหลดข้อมูลและฝึกโมเดลก่อน")
     else:
