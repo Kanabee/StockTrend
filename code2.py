@@ -1,4 +1,6 @@
 
+# file: arima_forecast_basic.py
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
@@ -69,16 +71,13 @@ if st.button("🚀 Run ARIMA Model"):
         forecast_index = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=forecast_days, freq='B')
         forecast_series = pd.Series(forecast_mean.values, index=forecast_index)
 
-        # Step 3: Plot forecast vs actual only
-        st.subheader("Forecast vs Actual")
-        import matplotlib
-        matplotlib.use('Agg')
-        fig, ax = plt.subplots(figsize=(10, 4))
-        if len(test) >= forecast_days:
-            test_subset = test[:forecast_days]
-            ax.plot(test_subset, label='Actual')
-        ax.plot(forecast_series, label='Forecast', linestyle='--')
-        ax.set_title(f'{ticker} Price Forecast vs Actual (ARIMA{best_order})')
-        ax.legend()
-        ax.grid(True)
-        st.pyplot(fig)
+        # Show forecast vs actual for last 7 days if available
+        st.subheader("📊 Actual vs Forecast (Last 7 Days)")
+        if len(test) >= 7:
+            comparison_df = pd.DataFrame({
+                'Actual': test[:7].values,
+                'Forecast': forecast_series[:7].values
+            }, index=test[:7].index.strftime('%Y-%m-%d'))
+            st.dataframe(comparison_df)
+        else:
+            st.info("Not enough test data to compare 7 days.")
