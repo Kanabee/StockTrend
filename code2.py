@@ -15,6 +15,7 @@ st.title("📈 ARIMA Forecasting for Stocks")
 
 # User input
 ticker = st.text_input("Enter stock ticker (e.g. PTTGC.BK):", value='PTTGC.BK')
+forecast_days = st.number_input("Enter number of days to forecast ahead:", min_value=1, max_value=365, value=30)
 
 # Load data button
 if st.button("📥 Load Stock Data"):
@@ -59,25 +60,34 @@ if st.button("🚀 Run ARIMA Model"):
 
         st.success(f'Best ARIMA order: {best_order} with AIC: {best_aic:.2f}')
 
-        # Step 2: Forecast for test set
-        forecast_result = best_model.get_forecast(steps=len(test))
+        # Step 2: Forecast future prices
+        forecast_result = best_model.get_forecast(steps=forecast_days)
         forecast_mean = forecast_result.predicted_mean
 
-        # Step 3: Accuracy metrics
-        rmse = np.sqrt(mean_squared_error(test, forecast_mean))
-        mape = mean_absolute_percentage_error(test, forecast_mean) * 100
-        st.metric("RMSE", f"{rmse:.4f}")
-        st.metric("MAPE", f"{mape:.2f}%")
+        # Generate forecast dates
+        last_date = series.index[-1]
+        forecast_index = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=forecast_days, freq='B')
+        forecast_series = pd.Series(forecast_mean.values, index=forecast_index)
 
-        # Step 4: Plot
+        st.subheader("📊 Forecasted Prices")
+        st.line_chart(forecast_series)
+
+        # Step 3: Accuracy metrics (on test set)
+        if len(test) >= forecast_days:
+            test_subset = test[:forecast_days]
+            rmse = np.sqrt(mean_squared_error(test_subset, forecast_mean))
+            mape = mean_absolute_percentage_error(test_subset, forecast_mean) * 100
+            st.metric("RMSE", f"{rmse:.4f}")
+            st.metric("MAPE", f"{mape:.2f}%")
+
+        # Step 4: Plot all
         st.subheader("Forecast vs Actual")
         import matplotlib
         matplotlib.use('Agg')
         fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(train[-60:], label='Train')
-        ax.plot(test, label='Actual')
-        ax.plot(forecast_mean, label='Forecast', linestyle='--')
-        ax.set_title(f'{ticker} Forecast vs Actual (ARIMA{best_order})')
+        ax.plot(series[-60:], label='Historical')
+        ax.plot(forecast_series, label='Forecast', linestyle='--')
+        ax.set_title(f'{ticker} Price Forecast (ARIMA{best_order})')
         ax.legend()
         ax.grid(True)
         st.pyplot(fig)
