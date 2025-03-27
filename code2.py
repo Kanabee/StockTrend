@@ -121,24 +121,25 @@ if st.button("🔮 ทำนายแนวโน้มด้วย Logistic Reg
         st.success(f"แนวโน้มที่คาดการณ์: {lr_trend}")
 
         st.subheader("🧠 ผลลัพธ์ ARIMA (พยากรณ์ราคาปิดช่วงทดสอบ)")
-        def get_dynamic_spread(latest_price):
-    if latest_price < 2:
-        return 0.01
-    elif latest_price < 5:
-        return 0.02
-    elif latest_price < 10:
-        return 0.05
-    elif latest_price < 25:
-        return 0.10
-    elif latest_price < 100:
-        return 0.25
-    elif latest_price < 200:
-        return 0.50
-    elif latest_price < 400:
-        return 1.00
-    else:
-        return 2.00
+        
         forecast_df = pd.DataFrame({"วันที่": arima_test.index, "จริง": arima_test.values, "พยากรณ์": arima_forecast})
+        def get_dynamic_spread(latest_price):
+           if latest_price < 2:
+             return 0.01
+           elif latest_price < 5:
+             return 0.02
+           elif latest_price < 10:
+             return 0.05
+           elif latest_price < 25:
+             return 0.10
+           elif latest_price < 100:
+             return 0.25
+           elif latest_price < 200:
+             return 0.50
+           elif latest_price < 400:
+             return 1.00
+           else:
+             return 2.00
         st.dataframe(forecast_df.set_index("วันที่"))
         st.metric(label="📉 Mean Squared Error (MSE)", value=f"{arima_mse:.4f}")
 
