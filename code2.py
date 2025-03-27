@@ -1,3 +1,4 @@
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import warnings
@@ -15,16 +16,24 @@ st.title("📈 ARIMA Forecasting for Stocks")
 # User input
 ticker = st.text_input("Enter stock ticker (e.g. PTTGC.BK):", value='PTTGC.BK')
 
+# Load data button
 if st.button("📥 Load Stock Data"):
     df = yf.Ticker(ticker).history(period="5y")[["Close"]]
     series = df['Close'].astype(float)
     series.index = pd.to_datetime(df.index)
     series = series.dropna()
 
+    st.session_state['series'] = series
     st.success("✅ Stock data loaded successfully!")
     st.line_chart(series)
 
-    if st.button("🚀 Run ARIMA Model"):
+# Run model button
+if st.button("🚀 Run ARIMA Model"):
+    if 'series' not in st.session_state:
+        st.warning("⚠️ Please load stock data first.")
+    else:
+        series = st.session_state['series']
+
         # Split into train/test
         train_size = int(len(series) * 0.8)
         train, test = series[:train_size], series[train_size:]
@@ -72,5 +81,3 @@ if st.button("📥 Load Stock Data"):
         ax.legend()
         ax.grid(True)
         st.pyplot(fig)
-
-
