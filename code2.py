@@ -69,25 +69,16 @@ if st.button("🚀 Run ARIMA Model"):
         forecast_index = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=forecast_days, freq='B')
         forecast_series = pd.Series(forecast_mean.values, index=forecast_index)
 
-        st.subheader("📊 Forecasted Prices")
-        st.line_chart(forecast_series)
-
-        # Step 3: Accuracy metrics (on test set)
-        if len(test) >= forecast_days:
-            test_subset = test[:forecast_days]
-            rmse = np.sqrt(mean_squared_error(test_subset, forecast_mean))
-            mape = mean_absolute_percentage_error(test_subset, forecast_mean) * 100
-            st.metric("RMSE", f"{rmse:.4f}")
-            st.metric("MAPE", f"{mape:.2f}%")
-
-        # Step 4: Plot all
+        # Step 3: Plot forecast vs actual only
         st.subheader("Forecast vs Actual")
         import matplotlib
         matplotlib.use('Agg')
         fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(series[-60:], label='Historical')
+        if len(test) >= forecast_days:
+            test_subset = test[:forecast_days]
+            ax.plot(test_subset, label='Actual')
         ax.plot(forecast_series, label='Forecast', linestyle='--')
-        ax.set_title(f'{ticker} Price Forecast (ARIMA{best_order})')
+        ax.set_title(f'{ticker} Price Forecast vs Actual (ARIMA{best_order})')
         ax.legend()
         ax.grid(True)
         st.pyplot(fig)
