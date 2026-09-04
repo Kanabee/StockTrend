@@ -6,6 +6,8 @@ Key design decisions (see README):
   2. Train/test split is chronological, never random.
   3. Model is always reported against a majority-class baseline.
   4. Output is a probability, not just a binary label.
+  5. Threshold analysis asks the real question: is there a subset of days
+     where the signal is strong enough to be worth acting on?
 """
 
 import numpy as np
@@ -28,6 +30,16 @@ from sklearn.metrics import (
 
 TEST_SIZE = 0.2          # last 20% of the timeline is held out
 LOOKBACK_YEARS = "5y"
+MIN_SIGNALS = 20         # below this, a precision figure is not interpretable
+
+COMPARISON_TICKERS = {
+    "AAPL": "Apple (US)",
+    "MSFT": "Microsoft (US)",
+    "^GSPC": "S&P 500 (US index)",
+    "7203.T": "Toyota (JP)",
+    "6758.T": "Sony (JP)",
+    "^N225": "Nikkei 225 (JP index)",
+}
 
 
 # ----------------------------------------------------------------------
@@ -40,7 +52,6 @@ def load_prices(ticker: str) -> pd.DataFrame:
     )
     if df.empty:
         return df
-    # yfinance returns a MultiIndex column frame for some calls; flatten it.
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     return df[["Open", "High", "Low", "Close", "Volume"]].dropna()
@@ -53,7 +64,6 @@ def rsi(series: pd.Series, window: int = 14) -> pd.Series:
     delta = series.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-    # Wilder's smoothing
     avg_gain = gain.ewm(alpha=1 / window, min_periods=window, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1 / window, min_periods=window, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0, np.nan)
@@ -64,11 +74,9 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Every feature is a ratio or a bounded index.
 
-    Raw MA5 / MA25 / Upper / Lower are price *levels*: they are non-stationary
-    (a stock at 50 USD in 2021 and 200 USD in 2026 is the same signal at a
-    different scale) and near-perfectly collinear with each other. Feeding them
-    to a linear model teaches it the price level instead of the direction.
-    Converting to deviations and ratios removes both problems.
+    Raw MA5 / MA25 / Upper / Lower are price *levels*: non-stationary and
+    near-perfectly collinear. Feeding them to a linear model teaches it the
+    price level instead of the direction. Ratios remove both problems.
     """
     out = pd.DataFrame(index=df.index)
     close = df["Close"]
@@ -81,24 +89,19 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     upper = ma25 + 2 * std25
     lower = ma25 - 2 * std25
 
-    # --- trend: where is price relative to its own averages (in %)
     out["dev_ma5"] = close / ma5 - 1
     out["dev_ma25"] = close / ma25 - 1
     out["dev_ma75"] = close / ma75 - 1
 
-    # --- crossover: short-term vs medium/long-term trend
     out["ma5_vs_ma25"] = ma5 / ma25 - 1
     out["ma25_vs_ma75"] = ma25 / ma75 - 1
 
-    # --- momentum: already bounded 0-100, rescaled to 0-1
     out["rsi14"] = rsi(close, 14) / 100
 
-    # --- volatility position: %B is the standard Bollinger normalisation
     band_width = (upper - lower).replace(0, np.nan)
     out["pct_b"] = (close - lower) / band_width
-    out["band_width"] = band_width / ma25          # relative volatility
+    out["band_width"] = band_width / ma25
 
-    # --- short-horizon returns
     out["ret_1d"] = close.pct_change(1)
     out["ret_5d"] = close.pct_change(5)
     out["vol_20d"] = close.pct_change().rolling(20).std()
@@ -107,7 +110,6 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_target(df: pd.DataFrame) -> pd.Series:
-    """1 if the NEXT close is above today's close, else 0."""
     return (df["Close"].shift(-1) > df["Close"]).astype(int)
 
 
@@ -117,18 +119,15 @@ def assemble(df: pd.DataFrame):
 
     data = X.copy()
     data["target"] = y
-    # The final row has no next-day close -> its target is undefined.
     data = data.iloc[:-1].replace([np.inf, -np.inf], np.nan).dropna()
 
     return data.drop(columns="target"), data["target"], X
 
 
 # ----------------------------------------------------------------------
-# 3. Model + honest evaluation
+# 3. Model + evaluation
 # ----------------------------------------------------------------------
 def make_model() -> Pipeline:
-    # Scaling matters: without it, features on different numeric ranges get
-    # arbitrarily different effective regularisation.
     return Pipeline(
         [
             ("scaler", StandardScaler()),
@@ -138,10 +137,7 @@ def make_model() -> Pipeline:
 
 
 def evaluate(X: pd.DataFrame, y: pd.Series) -> dict:
-    """
-    Chronological hold-out. A random split would let the model see the future,
-    which is meaningless for a time-ordered series.
-    """
+    """Chronological hold-out. A random split would leak the future."""
     split = int(len(X) * (1 - TEST_SIZE))
     X_train, X_test = X.iloc[:split], X.iloc[split:]
     y_train, y_test = y.iloc[:split], y.iloc[split:]
@@ -150,9 +146,6 @@ def evaluate(X: pd.DataFrame, y: pd.Series) -> dict:
     pred = model.predict(X_test)
     proba = model.predict_proba(X_test)[:, 1]
 
-    # Baseline: always predict whichever class was more common in training.
-    # Equity markets rise slightly more often than they fall, so this is
-    # typically 52-54% — any model must beat it to be worth anything.
     majority = int(y_train.mode()[0])
     baseline_pred = np.full(len(y_test), majority)
 
@@ -168,12 +161,69 @@ def evaluate(X: pd.DataFrame, y: pd.Series) -> dict:
         "f1": f1_score(y_test, pred, zero_division=0),
         "roc_auc": roc_auc_score(y_test, proba),
         "confusion": confusion_matrix(y_test, pred),
-        "up_rate_test": y_test.mean(),
+        "up_rate_test": float(y_test.mean()),
+        "y_test": y_test,
+        "proba": proba,
     }
 
 
 # ----------------------------------------------------------------------
-# 4. Streamlit UI
+# 4. Threshold analysis
+# ----------------------------------------------------------------------
+def threshold_table(
+    y_test: pd.Series, proba: np.ndarray, base_rate: float
+) -> pd.DataFrame:
+    """
+    A classifier does not have to trade every day. Raising the decision
+    threshold trades coverage for precision: fewer signals, each carrying
+    more conviction. This table shows whether that trade is available at
+    all — for price-only models it often is not.
+    """
+    rows = []
+    y = y_test.to_numpy()
+
+    for t in np.arange(0.50, 0.76, 0.025):
+        mask = proba >= t
+        n = int(mask.sum())
+        precision = float(y[mask].mean()) if n else np.nan
+        rows.append(
+            {
+                "Threshold": round(float(t), 3),
+                "Signals": n,
+                "Coverage": n / len(y),
+                "Precision": precision,
+                "Lift vs base rate": (
+                    precision - base_rate if n >= MIN_SIGNALS else np.nan
+                ),
+                "Reliable": n >= MIN_SIGNALS,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def evaluate_ticker(ticker: str):
+    """Compact evaluation used by the cross-market comparison."""
+    prices = load_prices(ticker)
+    if prices.empty:
+        return None
+    X, y, _ = assemble(prices)
+    if len(X) < 250:
+        return None
+    m = evaluate(X, y)
+    return {
+        "Accuracy": m["accuracy"],
+        "Baseline": m["baseline_accuracy"],
+        "Edge": m["accuracy"] - m["baseline_accuracy"],
+        "ROC-AUC": m["roc_auc"],
+        "Up rate": m["up_rate_test"],
+        "Test days": m["n_test"],
+    }
+
+
+# ----------------------------------------------------------------------
+# 5. Streamlit UI
 # ----------------------------------------------------------------------
 st.set_page_config(page_title="Stock Trend Prediction", page_icon="📈")
 st.title("📈 Stock Trend Prediction")
@@ -183,7 +233,6 @@ st.caption(
 )
 
 ticker = st.text_input("Ticker symbol", value="AAPL").strip().upper()
-
 if not ticker:
     st.stop()
 
@@ -200,7 +249,7 @@ if len(X) < 250:
 metrics = evaluate(X, y)
 edge = metrics["accuracy"] - metrics["baseline_accuracy"]
 
-# --- Evaluation first. The honest number goes above the prediction, not below.
+# --- Evaluation first. The honest number goes above the prediction.
 st.subheader("Out-of-sample performance")
 st.write(
     f"Trained on {metrics['n_train']} days, tested on {metrics['n_test']} "
@@ -218,6 +267,13 @@ c4.metric("Precision", f"{metrics['precision']:.1%}")
 c5.metric("Recall", f"{metrics['recall']:.1%}")
 c6.metric("F1", f"{metrics['f1']:.3f}")
 
+st.caption(
+    "F1 is shown for completeness but is misleading here: predicting 'Up' "
+    "every single day would score higher than the model, because the positive "
+    "class is the majority. ROC-AUC and the edge over baseline are the figures "
+    "that carry information."
+)
+
 if edge <= 0:
     st.warning(
         "This model does not beat the naive baseline on the test period. "
@@ -226,16 +282,133 @@ if edge <= 0:
     )
 
 with st.expander("Confusion matrix"):
-    cm = metrics["confusion"]
     st.dataframe(
         pd.DataFrame(
-            cm,
+            metrics["confusion"],
             index=["Actual Down", "Actual Up"],
             columns=["Predicted Down", "Predicted Up"],
         )
     )
 
-# --- Live prediction, refit on all available history
+# --- Threshold analysis
+st.subheader("Signal threshold analysis")
+base_rate = metrics["up_rate_test"]
+tbl = threshold_table(metrics["y_test"], metrics["proba"], base_rate)
+
+st.write(
+    "The default 0.50 cut-off forces a call on every trading day. Raising it "
+    "means acting only on high-conviction days. The question is whether "
+    f"precision rises meaningfully above the {base_rate:.1%} base rate of "
+    "up-days while enough signals remain to be meaningful."
+)
+
+st.dataframe(
+    tbl.style.format(
+        {
+            "Coverage": "{:.1%}",
+            "Precision": "{:.1%}",
+            "Lift vs base rate": "{:+.1%}",
+        },
+        na_rep="—",
+    ),
+    hide_index=True,
+    use_container_width=True,
+)
+
+reliable = tbl[tbl["Reliable"]].dropna(subset=["Precision"])
+if not reliable.empty:
+    fig_t, ax_t = plt.subplots(figsize=(9, 4))
+    ax_t.plot(
+        reliable["Threshold"],
+        reliable["Precision"],
+        marker="o",
+        label="Precision",
+    )
+    ax_t.axhline(
+        base_rate,
+        linestyle="--",
+        linewidth=1,
+        color="grey",
+        label=f"Base rate ({base_rate:.1%})",
+    )
+    ax_t.set_xlabel("Decision threshold — P(Up)")
+    ax_t.set_ylabel("Precision")
+    ax_t.grid(alpha=0.3)
+    ax_t.legend(loc="upper left")
+
+    ax_c = ax_t.twinx()
+    ax_c.bar(
+        reliable["Threshold"],
+        reliable["Coverage"],
+        width=0.015,
+        alpha=0.2,
+        color="tab:orange",
+    )
+    ax_c.set_ylabel("Coverage (share of days signalled)")
+    ax_c.set_ylim(0, 1)
+
+    st.pyplot(fig_t)
+
+    best = reliable.loc[reliable["Precision"].idxmax()]
+    st.info(
+        f"Best reliable threshold: **{best['Threshold']:.3f}** — "
+        f"{int(best['Signals'])} signals ({best['Coverage']:.1%} of test days), "
+        f"precision {best['Precision']:.1%} "
+        f"({best['Lift vs base rate']:+.1%} vs base rate). Rows with fewer than "
+        f"{MIN_SIGNALS} signals are excluded: precision computed on a handful "
+        "of days is sampling noise, not evidence."
+    )
+else:
+    st.info(
+        f"No threshold produced at least {MIN_SIGNALS} signals, so no precision "
+        "figure here would be statistically meaningful."
+    )
+
+# --- Cross-market comparison
+st.subheader("Cross-market comparison")
+st.write(
+    "Running the identical pipeline across US and Japanese equities and indices "
+    "tests whether any apparent edge is a property of the method or of one "
+    "particular series."
+)
+
+if st.button("Run comparison (takes ~30 seconds)"):
+    results = {}
+    progress = st.progress(0.0)
+    for i, (tk, label) in enumerate(COMPARISON_TICKERS.items(), start=1):
+        res = evaluate_ticker(tk)
+        if res:
+            results[f"{label}  [{tk}]"] = res
+        progress.progress(i / len(COMPARISON_TICKERS))
+    progress.empty()
+
+    if results:
+        comp = pd.DataFrame(results).T
+        st.dataframe(
+            comp.style.format(
+                {
+                    "Accuracy": "{:.1%}",
+                    "Baseline": "{:.1%}",
+                    "Edge": "{:+.1%}",
+                    "ROC-AUC": "{:.3f}",
+                    "Up rate": "{:.1%}",
+                    "Test days": "{:.0f}",
+                }
+            ),
+            use_container_width=True,
+        )
+        mean_edge = comp["Edge"].mean()
+        n_positive = int((comp["Edge"] > 0).sum())
+        st.caption(
+            f"Mean edge over baseline across {len(comp)} series: "
+            f"{mean_edge:+.1%}; positive on {n_positive} of {len(comp)}. "
+            "A method with genuine predictive power would show a consistent "
+            "edge, not a mix of signs."
+        )
+    else:
+        st.warning("No comparison data could be retrieved.")
+
+# --- Live prediction
 st.subheader("Next-day signal")
 final_model = make_model().fit(X, y)
 
@@ -251,7 +424,6 @@ st.metric(
 st.progress(prob_up)
 st.caption(f"P(Up) = {prob_up:.3f}. Values near 0.50 carry no meaningful signal.")
 
-# --- Feature weights: which indicators the model actually leans on
 with st.expander("Model coefficients"):
     coefs = pd.Series(
         final_model.named_steps["clf"].coef_[0], index=X.columns
