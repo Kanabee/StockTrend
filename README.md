@@ -1,12 +1,11 @@
 
-
 # 📈 Stock Trend Prediction
 
 A deployed machine-learning web application that classifies next-day stock
 price direction from technical indicators — and reports honestly that it does
 not work.
 
-**Live demo:** [English] https://stocktrend-dcc8wybbjikjdlgtg6j7pj.streamlit.app/
+**Live demo:** [English](https://stocktrend-dcc8wybbjikjdlgtg6j7pj.streamlit.app/) 
 ---
 
 ## Result First
@@ -29,9 +28,16 @@ systematic bias toward predicting "Up": the model calls up on 164 of 236 days
 when only 127 actually rise. Acting on that would mean 72 losing entries, and
 transaction costs alone would erase the margin.
 
-ROC-AUC of 0.582 is the one figure above chance that means something: the model
-ranks up-days above down-days slightly better than random. Whether that
-ranking is exploitable at any decision threshold is examined below.
+ROC-AUC of 0.582 is the one figure above chance that means something on this
+ticker: the model ranks up-days above down-days slightly better than random.
+Restricting to high-conviction days lifts precision to 62.3% at a 0.525
+threshold, 8.5 points above the base rate.
+
+**That apparent signal does not survive contact with other markets.** Run
+across six US and Japanese series, mean ROC-AUC is **0.5015** — chance — and
+the edge over baseline is negative on five of six. Apple's result sits 1.5
+standard deviations above a distribution centred on nothing. See the
+cross-market comparison below.
 
 Note that **F1 is lower than the naive baseline would score.** Predicting "Up"
 every single day yields F1 = 0.700 against the model's 0.632, because the
@@ -109,9 +115,47 @@ Thresholds producing fewer than 20 signals are excluded from the summary.
 Precision computed on a handful of days is sampling noise, and picking the
 threshold with the prettiest number is how backtests get overfitted.
 
-*[Insert your threshold table here after running the app — the question is
-whether precision rises meaningfully above the base rate while enough signals
-remain.]*
+| Threshold | Signals | Coverage | Precision | Lift vs base rate | 95% CI |
+|---|---|---|---|---|---|
+| 0.500 | 164 | 69.5% | 56.1% | +2.3% | [48.5%, 63.7%] |
+| 0.525 | 106 | 44.9% | **62.3%** | **+8.5%** | [53.1%, 71.5%] |
+| 0.550 | 40 | 16.9% | **65.0%** | **+11.2%** | [50.2%, 79.8%] |
+| 0.575 | 12 | 5.1% | 75.0% | — | *excluded, n < 20* |
+| 0.600 | 3 | 1.3% | 66.7% | — | *excluded, n < 20* |
+| 0.625 | 2 | 0.8% | 100.0% | — | *excluded, n < 20* |
+
+Base rate: 53.8% of test days rose (127 of 236).
+
+**Precision rises monotonically with conviction.** At the default 0.50
+cut-off the model is indistinguishable from the baseline. Restricting to days
+where it assigns P(Up) ≥ 0.525 leaves 106 signals at 62.3% precision — 8.5
+points above base rate. At 0.550, 40 signals at 65.0%.
+
+This is consistent with the ROC-AUC of 0.582: the model ranks days better than
+it classifies them. The signal exists in the ordering and the default
+threshold discards it.
+
+### How much weight this deserves
+
+Two things stop this from being a finding rather than a hint.
+
+**Sample size.** At threshold 0.525, precision is 62.3% ± 9.2 points at 95%
+confidence — a one-sided z of 1.80, p = 0.036. Suggestive on its own.
+
+**Selection.** Eleven thresholds were swept and the best chosen after seeing
+the test set. Adjusting for that (Bonferroni, ×11) takes p to 0.39. The result
+does not survive a correction for having looked eleven times.
+
+**The 0.625 row is the argument for the exclusion rule.** It shows 100%
+precision — on two days. Without a minimum-signal filter, that row is what a
+careless write-up would headline.
+
+The honest summary: a conviction filter appears to recover a real ranking
+signal, but the evidence is one ticker over one test period and does not clear
+a multiple-comparison correction. Confirming it requires walk-forward
+validation across several markets and periods, and a backtest with transaction
+costs — 40 trades at 65% precision says nothing about profit until the size of
+the winning and losing moves is known.
 
 ---
 
@@ -124,7 +168,37 @@ any apparent edge belongs to the method or to one particular series.
 A method with genuine predictive power shows a consistent edge across markets.
 A mix of positive and negative edges indicates noise.
 
-*[Insert your comparison table here after running it.]*
+| Series | Accuracy | Baseline | Edge | ROC-AUC | Test days |
+|---|---|---|---|---|---|
+| Apple (US) | 54.7% | 53.8% | **+0.8%** | 0.582 | 236 |
+| Microsoft (US) | 48.7% | 50.0% | −1.3% | 0.513 | 236 |
+| S&P 500 (US) | 52.5% | 55.5% | −3.0% | 0.451 | 236 |
+| Toyota (JP) | 41.7% | 50.0% | −8.3% | 0.429 | 230 |
+| Sony (JP) | 50.4% | 57.0% | −6.5% | 0.515 | 230 |
+| Nikkei 225 (JP) | 49.1% | 53.0% | −3.9% | 0.519 | 230 |
+
+**Mean edge: −3.7%. Positive on 1 of 6.**
+
+**Mean ROC-AUC across the six series: 0.5015** — indistinguishable from chance
+(sd 0.055, t = 0.07). Individual values scatter symmetrically around 0.50:
+Apple sits 0.082 above, Toyota 0.071 below.
+
+### This settles the question
+
+Apple's 0.582 is **1.5 standard deviations above the cross-market mean** — the
+top of a distribution centred on chance, not evidence of a method that works.
+The threshold result above is best read the same way: it was the best of eleven
+thresholds on the best of six series.
+
+The method does not generalise. Applied to five other liquid, well-covered
+markets, it loses to a naive baseline every time, and loses most on the
+Japanese equities. Whatever pattern the model found in Apple's 2025–2026 price
+history is a property of that series and that window.
+
+**This was the point of running the comparison.** A single-ticker result with a
+positive-looking number is the easiest way to fool yourself in this kind of
+work, and the cheapest correction is to run the identical pipeline elsewhere
+before believing it.
 
 ---
 
@@ -233,12 +307,57 @@ AAPL を対象に、学習944日・検証236日（2025-09-26 〜 2026-09-03）�
 の正解率が得られます。この比較なしに正解率を報告することに意味はありません。
 
 **4. しきい値分析**
-分類器は毎日取引する必要はありません。判定しきい値を上げれば、シグナル数と引き
-換えに確信度の高い日だけを選別できます。ただし、シグナル数が20件未満のしきい値
-は集計から除外しています。数日分で算出した適合率は標本誤差であり、最も見栄えの
-良いしきい値を選ぶことがバックテストの過剰適合そのものだからです。
+分類器は毎日取引する必要はありません。判定しきい値を上げれば、シグナル数と
+引き換えに確信度の高い日だけを選別できます。
 
-**5. 二値ラベルではなく確率を出力**
+| しきい値 | シグナル数 | 適合率 | ベースライン比 |
+|---|---|---|---|
+| 0.500 | 164 | 56.1% | +2.3% |
+| 0.525 | 106 | **62.3%** | **+8.5%** |
+| 0.550 | 40 | **65.0%** | **+11.2%** |
+| 0.625 | 2 | 100.0% | 除外（n<20） |
+
+確信度を上げるにつれて適合率が単調に上昇しており、これは ROC-AUC 0.582 と整合
+します。つまりモデルは「分類」よりも「順位付け」に情報を持っており、既定の
+しきい値0.50がその情報を捨てていたことになります。
+
+**ただし、この結果は「発見」ではなく「示唆」に留めるべきです。** しきい値0.525
+における適合率62.3%は95%信頼区間で ±9.2ポイント（片側 z = 1.80、p = 0.036）
+であり、単独では有意水準を満たすものの、11通りのしきい値を検証した上で最良の
+ものを事後的に選択しているため、多重比較補正（Bonferroni ×11）を行うと
+p = 0.39 となり有意性は失われます。
+
+なお、しきい値0.625の行は適合率100%を示していますが、これはわずか2日分の結果
+です。シグナル数20件未満を集計から除外している理由がここにあります。この種の
+数値を成果として提示することが、バックテストにおける過剰適合そのものです。
+
+**5. 複数市場での再現性検証**
+同一のパイプラインを米国・日本の6銘柄／指数に適用し、AAPLで見られた優位性が
+「手法の性質」か「特定銘柄の性質」かを検証しました。
+
+| 銘柄 | 正解率 | ベースライン | 差 | ROC-AUC |
+|---|---|---|---|---|
+| Apple (US) | 54.7% | 53.8% | **+0.8%** | 0.582 |
+| Microsoft (US) | 48.7% | 50.0% | −1.3% | 0.513 |
+| S&P 500 | 52.5% | 55.5% | −3.0% | 0.451 |
+| トヨタ (JP) | 41.7% | 50.0% | −8.3% | 0.429 |
+| ソニー (JP) | 50.4% | 57.0% | −6.5% | 0.515 |
+| 日経225 | 49.1% | 53.0% | −3.9% | 0.519 |
+
+**平均 ROC-AUC は 0.5015 であり、偶然と区別できません**（標準偏差0.055）。
+各銘柄の値は0.50を中心にほぼ対称に分布しており（AAPLは+0.082、トヨタは
+−0.071）、ベースラインを上回ったのは6銘柄中1銘柄のみ、平均では −3.7% でした。
+
+**この検証により結論が確定します。** AAPLの ROC-AUC 0.582 は、平均から標準
+偏差1.5個分上振れした値に過ぎず、手法に予測力があることを示すものではありま
+せん。前項のしきい値分析の結果も同様に、「6銘柄中で最も良かった銘柄における、
+11通り中で最も良かったしきい値」であったと解釈するのが妥当です。
+
+単一銘柄の良好な結果をそのまま受け入れることが、この種の分析における最大の
+落とし穴です。同一パイプラインを他市場に適用するという最も安価な検証を行った
+上で結論を出す設計としました。
+
+**6. 二値ラベルではなく確率を出力**
 P(Up) を表示することで、モデルが0.53という「確信のない状態」にあることを利用者
 が判断できるようにしました。
 
