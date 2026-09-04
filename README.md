@@ -1,298 +1,252 @@
+
+
 # 📈 Stock Trend Prediction
 
-A machine learning web application for analyzing historical stock prices and predicting the **next-day price direction (Up / Down)** using technical indicators and Logistic Regression.
+A deployed machine-learning web application that classifies next-day stock
+price direction from technical indicators — and reports honestly that it does
+not work.
 
-The application retrieves market data from Yahoo Finance and provides an interactive interface built with Streamlit.
+**Live demo:** [English] https://stocktrend-dcc8wybbjikjdlgtg6j7pj.streamlit.app/
+---
 
-## 🌐 Live Demo
+## Result First
 
-**English Version**
-https://stocktrend-dcc8wybbjikjdlgtg6j7pj.streamlit.app/
+Tested on AAPL over 236 unseen trading days (2025-09-26 → 2026-09-03), trained
+on the preceding 944 days:
 
-**Japanese Version / 日本語版**
-https://stocktrend-ibgvicgbw3qbljc623ky3e.streamlit.app/
+| Metric | Model | Baseline |
+|---|---|---|
+| Accuracy | **54.7%** | 53.8% (always predict "Up") |
+| ROC-AUC | **0.582** | 0.500 |
+| Precision | 56.1% | — |
+| Recall | 72.4% | — |
+| F1 | 0.632 | 0.700 |
+
+**The model carries no economically meaningful edge.** It beats the naive
+baseline by 0.9 percentage points — about two days out of 236, which is inside
+the range of noise. Precision of 56.1% against recall of 72.4% shows a
+systematic bias toward predicting "Up": the model calls up on 164 of 236 days
+when only 127 actually rise. Acting on that would mean 72 losing entries, and
+transaction costs alone would erase the margin.
+
+ROC-AUC of 0.582 is the one figure above chance that means something: the model
+ranks up-days above down-days slightly better than random. Whether that
+ranking is exploitable at any decision threshold is examined below.
+
+Note that **F1 is lower than the naive baseline would score.** Predicting "Up"
+every single day yields F1 = 0.700 against the model's 0.632, because the
+positive class is the majority. F1 is reported here only to show why it is the
+wrong headline metric for this problem.
 
 ---
 
-## Project Overview
+## Why This Is the Expected Result
 
-Financial market data contains large amounts of historical price information that can be transformed into technical indicators for market analysis.
+If daily price direction were predictable from moving averages and RSI alone,
+the edge would have been arbitraged away long ago. A model reporting 90%+
+accuracy on this task is almost always leaking future information — commonly by
+using a random train/test split on time-ordered data, or by including a feature
+unavailable at prediction time.
 
-This project explores how historical stock prices and technical indicators can be combined with a machine learning classification model to estimate whether the **next trading day's closing price will move Up or Down**.
-
-The project covers the complete workflow from:
-
-**Market Data → Feature Engineering → Machine Learning → Prediction → Interactive Web Application**
+This project is built to make that failure mode impossible to hide, and to
+report what remains.
 
 ---
 
-## Project Objective
+## Design Decisions
 
-The main objectives of this project are:
+### Scale-invariant features
 
-* Retrieve historical stock market data automatically
-* Generate technical indicators from historical prices
-* Transform stock movement into a binary classification problem
-* Train a machine learning model to identify price direction
-* Provide users with an interactive interface for stock analysis
-* Visualize historical stock prices and moving averages
+The original implementation fed raw MA5, MA25, MA75, and Bollinger band levels
+directly into the classifier. Those are **price levels**: non-stationary (a
+stock at 50 USD in 2021 and 200 USD in 2026 is the same signal at a different
+scale) and near-perfectly collinear with one another. A linear model given
+those inputs learns the price level, not the direction.
+
+Every feature was rebuilt as a ratio or a bounded index:
+
+| Feature | Definition | Captures |
+|---|---|---|
+| `dev_ma5/25/75` | `Close / MA − 1` | Position relative to trend, in % |
+| `ma5_vs_ma25`, `ma25_vs_ma75` | `MA_short / MA_long − 1` | Crossover signal |
+| `rsi14` | 14-day RSI, Wilder's smoothing | Momentum, bounded 0–1 |
+| `pct_b` | `(Close − Lower) / (Upper − Lower)` | Standard Bollinger %B |
+| `band_width` | `(Upper − Lower) / MA25` | Relative volatility |
+| `ret_1d`, `ret_5d` | Simple returns | Short-horizon momentum |
+| `vol_20d` | Rolling σ of returns | Realized volatility |
+
+Features are standardised inside a scikit-learn `Pipeline`, so scaling is
+fitted on training data only and never sees the test set.
+
+### Chronological split
+
+The last 20% of the timeline is held out. A random split on time-ordered data
+lets the model train on days that follow the days it is tested on — the single
+most common source of inflated results in this kind of project.
+
+### Baseline comparison
+
+Equity markets rise slightly more often than they fall, so a classifier that
+always predicts "Up" scores 52–54% on most series. Every accuracy figure in
+this project is reported against that baseline, because accuracy alone is
+meaningless here.
+
+### Probability, not a label
+
+The app surfaces P(Up) rather than a binary call, so a reader can see when the
+model is at 0.53 and carrying no conviction.
+
+---
+
+## Signal Threshold Analysis
+
+A classifier does not have to trade every day. Raising the decision threshold
+trades coverage for precision: fewer signals, each carrying more conviction.
+The app sweeps thresholds from 0.50 to 0.75 and reports precision, coverage,
+and lift over the base rate at each.
+
+Thresholds producing fewer than 20 signals are excluded from the summary.
+Precision computed on a handful of days is sampling noise, and picking the
+threshold with the prettiest number is how backtests get overfitted.
+
+*[Insert your threshold table here after running the app — the question is
+whether precision rises meaningfully above the base rate while enough signals
+remain.]*
+
+---
+
+## Cross-Market Comparison
+
+The same pipeline is run across US and Japanese equities and indices — AAPL,
+MSFT, S&P 500, Toyota (7203.T), Sony (6758.T), Nikkei 225 — to test whether
+any apparent edge belongs to the method or to one particular series.
+
+A method with genuine predictive power shows a consistent edge across markets.
+A mix of positive and negative edges indicates noise.
+
+*[Insert your comparison table here after running it.]*
 
 ---
 
 ## How It Works
 
-The application follows the workflow below:
-
-`Stock Ticker → Yahoo Finance → 5-Year Historical Data → Technical Indicators → Logistic Regression → Up / Down Prediction → Streamlit`
-
-### 1. Stock Selection
-
-Users enter a stock ticker symbol in the Streamlit application.
-
-Examples:
-
-`AAPL` — Apple
-`MSFT` — Microsoft
-`TSLA` — Tesla
-
-The application then retrieves the stock's historical market data.
-
----
-
-## Data Source
-
-Historical stock price data is retrieved dynamically using the **yfinance** Python library.
-
-The application uses approximately **5 years of historical closing-price data** for model training and analysis.
-
-This allows the model to be rebuilt using data for the stock selected by the user.
-
----
-
-## Feature Engineering
-
-Historical closing prices are transformed into several technical indicators.
-
-### Moving Averages
-
-Three moving averages are calculated:
-
-* **MA5** — 5-day moving average
-* **MA25** — 25-day moving average
-* **MA75** — 75-day moving average
-
-Moving averages help represent short-, medium-, and longer-term price trends.
-
-### Relative Strength Index (RSI)
-
-A **14-day RSI** is calculated using average price gains and losses.
-
-RSI provides information about recent price momentum.
-
-### Bollinger Bands
-
-Bollinger Bands are calculated using the 25-day moving average and standard deviation.
-
-**Upper Band**
-
-`MA25 + (2 × 25-day Standard Deviation)`
-
-**Lower Band**
-
-`MA25 - (2 × 25-day Standard Deviation)`
-
-These features provide information about the position of the stock price relative to recent price volatility.
-
----
-
-## Machine Learning Model
-
-### Logistic Regression
-
-The project uses **Logistic Regression** as a binary classification model.
-
-The model uses six technical features:
-
-| Feature | Description                    |
-| ------- | ------------------------------ |
-| MA5     | 5-day Moving Average           |
-| MA25    | 25-day Moving Average          |
-| MA75    | 75-day Moving Average          |
-| RSI     | 14-day Relative Strength Index |
-| Upper   | Upper Bollinger Band           |
-| Lower   | Lower Bollinger Band           |
-
----
-
-## Target Variable
-
-The prediction target is created by comparing today's closing price with the next trading day's closing price.
-
-Conceptually:
-
-`Target = 1 → Next closing price > Current closing price`
-
-`Target = 0 → Next closing price ≤ Current closing price`
-
-Therefore, this project predicts **price direction rather than the exact future stock price**.
-
----
-
-## Prediction
-
-After downloading the data and training the model, the latest technical indicators are passed to the Logistic Regression model.
-
-The application returns one of two predictions:
-
-**Up 📈**
-
-or
-
-**Down 📉**
-
-The purpose is to demonstrate how market data can be transformed into features and used within a machine learning classification pipeline.
-
----
-
-## Stock Price Visualization
-
-The application also displays approximately five years of historical stock prices.
-
-The chart includes:
-
-* Closing Price
-* MA5
-* MA25
-* MA75
-
-This allows users to visually compare historical price movements with short-, medium-, and longer-term moving averages.
-
----
-
-## Streamlit Application
-
-The machine learning workflow is deployed as an interactive **Streamlit web application**.
-
-Users can:
-
-1. Enter a stock ticker
-2. Retrieve historical data from Yahoo Finance
-3. Generate technical indicators
-4. Train the Logistic Regression model
-5. View the latest model features
-6. Generate an Up / Down prediction
-7. Explore historical stock prices and moving averages
-
-Both **English and Japanese versions** are available.
-
----
-
-## Technologies Used
-
-* Python
-* Pandas
-* NumPy
-* yfinance
-* Scikit-learn
-* Logistic Regression
-* Matplotlib
-* Streamlit
-* GitHub
-
----
-
-## Key Skills Demonstrated
-
-This project demonstrates practical experience with:
-
-* Financial market data
-* Data collection
-* Data preprocessing
-* Feature engineering
-* Technical indicators
-* Machine learning classification
-* Financial data visualization
-* Interactive application development
-* Model deployment with Streamlit
+```
+Ticker → yfinance API → 5 years of daily data → scale-invariant features
+    → chronological split → Logistic Regression → out-of-sample evaluation
+    → threshold analysis → P(Up) → Streamlit
+```
+
+The model is retrained per session on the ticker the user enters, so the
+application demonstrates the full pipeline rather than serving a pre-fitted
+artefact.
 
 ---
 
 ## Limitations
 
-This project is designed as a machine learning and financial-data analysis demonstration.
+- **Technical indicators only.** No fundamentals, macroeconomic variables,
+  news, or sentiment.
+- **No transaction costs or liquidity modelling.** Any apparent edge would need
+  to survive spreads, commissions and slippage before meaning anything.
+- **Single chronological split**, not walk-forward validation. The result
+  reflects one test period.
+- **Logistic Regression only.** Tree-based and gradient-boosted models were not
+  compared.
+- **Historical relationships do not guarantee future performance.**
 
-The current model has several limitations:
-
-* The model uses historical price-based technical indicators only.
-* Fundamental company information is not included.
-* Macroeconomic variables are not included.
-* News and market sentiment are not considered.
-* Transaction costs and market liquidity are not modeled.
-* The current implementation does not include out-of-sample model evaluation or backtesting.
-* Historical relationships do not guarantee future market performance.
-
-Therefore, the prediction should **not be interpreted as an investment recommendation or trading signal**.
-
----
-
-## Future Improvements
-
-Potential improvements include:
-
-* Adding chronological train/test evaluation
-* Measuring Accuracy, Precision, Recall, F1-score and ROC-AUC
-* Implementing walk-forward validation
-* Building a backtesting framework
-* Comparing Logistic Regression with Random Forest, XGBoost, and other models
-* Adding additional technical indicators such as MACD
-* Incorporating volume data
-* Adding fundamental financial data
-* Incorporating market sentiment and news data
-* Displaying prediction probabilities
-* Improving the Streamlit dashboard and visualization
+Predictions from this application are **not investment advice or trading
+signals**. The project exists to demonstrate an analytical pipeline and honest
+model evaluation.
 
 ---
 
-## Conclusion
+## Next Steps
 
-This project demonstrates how **financial market knowledge, data analysis, machine learning, and application development** can be combined into a complete analytical workflow.
+- Walk-forward validation across multiple non-overlapping test windows.
+- A backtest incorporating transaction costs, to convert accuracy into
+  something with an economic interpretation.
+- Comparison against Random Forest and gradient boosting.
+- Additional features: volume, MACD, sector-relative returns.
+- Probability calibration, so a stated 0.60 corresponds to a 60% outcome rate.
 
-Instead of working only with a static dataset, the application retrieves market data dynamically, performs feature engineering, trains a classification model, generates a prediction, and presents the result through an interactive web application.
+---
 
-The overall workflow is:
+## Tech Stack
 
-**Financial Data → Technical Analysis → Feature Engineering → Machine Learning → Prediction → Web Application**
+Python · Pandas · NumPy · Scikit-learn · yfinance · Matplotlib · Streamlit
+
+## Running Locally
+
+```bash
+pip install -r requirements.txt
+streamlit run code.py
+```
 
 ---
 
 # 🇯🇵 日本語概要
 
-## 株価トレンド予測アプリ
+## 株価トレンド予測 Web アプリケーション
 
-本プロジェクトでは、株価の過去データとテクニカル指標を用いて、**翌営業日の株価方向（上昇・下降）を予測する機械学習Webアプリケーション**を開発しました。
+テクニカル指標を用いて翌営業日の株価方向を分類する機械学習アプリケーションを
+開発し、日英2言語版としてデプロイしました。
 
-ユーザーが銘柄コードを入力すると、**Yahoo Financeから過去5年間の株価データを取得**し、以下のテクニカル指標を作成します。
+### 結論：本モデルに実務上有意な予測力はありません
 
-* 5日移動平均線（MA5）
-* 25日移動平均線（MA25）
-* 75日移動平均線（MA75）
-* RSI
-* ボリンジャーバンド
+AAPL を対象に、学習944日・検証236日（2025-09-26 〜 2026-09-03）の時系列順分割
+で評価した結果は以下の通りです。
 
-これらの特徴量を使用して**ロジスティック回帰（Logistic Regression）**モデルを構築し、翌営業日の終値が現在の終値より上昇するか下降するかを分類します。
+| 指標 | モデル | ベースライン |
+|---|---|---|
+| 正解率 | **54.7%** | 53.8%（常に「上昇」と予測） |
+| ROC-AUC | **0.582** | 0.500 |
+| 適合率 | 56.1% | — |
+| 再現率 | 72.4% | — |
 
-さらに、Streamlitを使用してWebアプリケーションとして実装し、ユーザーが銘柄を入力してデータ取得、モデル構築、予測、株価チャートの確認まで行えるようにしました。
+ベースラインとの差は 0.9 ポイント、236日中およそ2日分に相当し、誤差の範囲内
+です。また、適合率56.1%に対し再現率72.4%という結果は、モデルが「上昇」側に
+偏った予測をしていることを示します。実際には127日しか上昇していないにもかかわ
+らず164日を上昇と予測しており、72回の誤ったエントリーは取引コストだけで利益を
+消失させます。
 
-本プロジェクトを通して、
+**この結果は想定通りです。** 移動平均やRSIのみから日次の値動きが予測できるので
+あれば、その優位性はとうに市場で解消されているはずです。正解率90%超を報告する
+モデルは、多くの場合リークを含んでいます。本プロジェクトは、そのリークが起こり
+得ない構造を作った上で、残った結果をそのまま報告することを目的としています。
 
-**金融データ取得 → データ加工 → テクニカル分析 → 特徴量作成 → 機械学習 → 予測 → Webアプリケーション**
+### 手法上の工夫
 
-という一連のデータ分析・機械学習プロセスを実装しました。
+**1. スケール不変な特徴量への変換**
+当初の実装では移動平均やボリンジャーバンドを価格の水準のまま特徴量としていま
+した。これらは非定常であり（2021年の50ドルと2026年の200ドルは同じシグナルの
+異なるスケール）、相互に強く相関するため、線形モデルは「方向」ではなく「価格
+水準」を学習してしまいます。そこで、移動平均乖離率、%B、バンド幅比率、実現
+ボラティリティなど、すべて比率または有界指標に置き換えました。
 
----
+**2. 時系列順の分割**
+ランダム分割では、テスト対象日より後の日を学習に使ってしまいます。これはこの種
+のプロジェクトで結果が過大評価される最大の原因であり、直近20%を時系列順に
+ホールドアウトすることで回避しています。
 
-## Disclaimer
+**3. ベースラインとの比較を必須化**
+株式市場は下落より上昇の日がやや多いため、「常に上昇」と予測するだけで52〜54%
+の正解率が得られます。この比較なしに正解率を報告することに意味はありません。
 
-This project is intended for **educational and portfolio purposes only**.
+**4. しきい値分析**
+分類器は毎日取引する必要はありません。判定しきい値を上げれば、シグナル数と引き
+換えに確信度の高い日だけを選別できます。ただし、シグナル数が20件未満のしきい値
+は集計から除外しています。数日分で算出した適合率は標本誤差であり、最も見栄えの
+良いしきい値を選ぶことがバックテストの過剰適合そのものだからです。
 
-The predictions generated by the application should not be considered financial advice or investment recommendations.
+**5. 二値ラベルではなく確率を出力**
+P(Up) を表示することで、モデルが0.53という「確信のない状態」にあることを利用者
+が判断できるようにしました。
+
+### 限界
+
+テクニカル指標のみを使用しており、ファンダメンタルズ、マクロ経済指標、ニュース、
+市場センチメントは含んでいません。取引コストおよび流動性も考慮していません。
+検証は単一期間の時系列分割によるものであり、ウォークフォワード検証は未実施です。
+
+本アプリケーションの予測は投資判断のためのシグナルではなく、分析プロセスとモデル
+評価手法の実証を目的としたものです。
