@@ -6,6 +6,7 @@ price direction from technical indicators — and reports honestly that it does
 not work.
 
 **Live demo:** [English](https://stocktrend-dcc8wybbjikjdlgtg6j7pj.streamlit.app/) 
+            [Japanese] https://stocktrend-rwojp3jczsj3plndxggegq.streamlit.app/
 ---
 
 ## Result First
