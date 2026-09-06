@@ -216,17 +216,17 @@ def evaluate_ticker(ticker: str):
     if len(X) < 250:
         return None
     m = evaluate(X, y)
-    
     best_naive = max(m["up_rate_test"], 1 - m["up_rate_test"])
     return {
         "Accuracy": m["accuracy"],
         "Baseline": m["baseline_accuracy"],
         "Edge": m["accuracy"] - m["baseline_accuracy"],
-        "Best naive": "{:.1%}",
-        "Edge vs naive": "{:+.1%}",
+        "Best naive": best_naive,
+        "Edge vs naive": m["accuracy"] - best_naive,
         "ROC-AUC": m["roc_auc"],
         "Up rate": m["up_rate_test"],
         "Test days": m["n_test"],
+    }
     }
 
 # ----------------------------------------------------------------------
@@ -395,20 +395,23 @@ else:
     )
 
 # --- Cross-market comparison
+# --- Cross-market comparison
+
 st.subheader("Cross-market comparison")
+
 st.write(
-    "Running the identical pipeline across US and Japanese equities and indices "
-    "tests whether any apparent edge is a property of the method or of one "
-    "particular series."
+    "Running the identical pipeline across US, Japanese and Thai equities and "
+    "indices tests whether any apparent edge is a property of the method or of "
+    "one particular series."
 )
 
-if st.button("Run comparison (takes ~30 seconds)"):
+if st.button("Run comparison (takes ~45 seconds)"):
     results = {}
     progress = st.progress(0.0)
     for i, (tk, label) in enumerate(COMPARISON_TICKERS.items(), start=1):
         res = evaluate_ticker(tk)
         if res:
-            results[f"{label}  [{tk}]"] = res
+            results[f"{label} [{tk}]"] = res
         progress.progress(i / len(COMPARISON_TICKERS))
     progress.empty()
 
@@ -420,6 +423,8 @@ if st.button("Run comparison (takes ~30 seconds)"):
                     "Accuracy": "{:.1%}",
                     "Baseline": "{:.1%}",
                     "Edge": "{:+.1%}",
+                    "Best naive": "{:.1%}",
+                    "Edge vs naive": "{:+.1%}",
                     "ROC-AUC": "{:.3f}",
                     "Up rate": "{:.1%}",
                     "Test days": "{:.0f}",
@@ -427,16 +432,18 @@ if st.button("Run comparison (takes ~30 seconds)"):
             ),
             use_container_width=True,
         )
-            mean_edge = comp["Edge vs naive"].mean()
-            n_positive = int((comp["Edge vs naive"] > 0).sum())
-            st.caption(
-                f"Measured against the best constant strategy in each test "
-                f"window, the mean edge across {len(comp)}series is "
-                f"{mean_edge:+.1%}, positive on {n_positive} of {len(comp)}. "
-                "The 'Edge' column compares against the training-period "
-                "majority instead, and can be inflated when the direction "
-                "flips between periods."
-         )   
+        mean_edge = comp["Edge vs naive"].mean()
+        n_positive = int((comp["Edge vs naive"] > 0).sum())
+        st.caption(
+            f"Measured against the best constant strategy in each test window, "
+            f"the mean edge across {len(comp)} series is {mean_edge:+.1%}, "
+            f"positive on {n_positive} of {len(comp)}. The 'Edge' column "
+            "compares against the training-period majority instead, and is "
+            "inflated wherever the direction flipped between the training and "
+            "test windows."
+        )
+    else:
+        st.warning("No comparison data could be retrieved.")
             
         
     else:
