@@ -24,6 +24,8 @@ This project asks a narrower and more answerable question:
 
 The answer this implementation arrives at is largely **no**, and reporting that plainly is part of the result.
 
+Testing across eight series also surfaced a second finding that was not the original goal: **the standard baseline comparison is itself exploitable.** When the market direction flips between the training and test windows, comparing against the training-period majority can manufacture an edge of several percentage points out of nothing. One of the eight series does exactly this. Catching it required adding a second, stricter baseline — described below.
+
 ---
 
 ## Design Decisions
@@ -32,7 +34,7 @@ The five choices that shape the implementation:
 
 1. **Features are scale-invariant ratios, not raw price levels.**
 2. **The train/test split is chronological, never random.**
-3. **Model accuracy is always reported against a majority-class baseline.**
+3. **Model accuracy is always reported against a baseline — and against a second, stricter one that survives a change of market regime.**
 4. **The output is a probability, not just a binary label.**
 5. **Threshold analysis asks the real question:** is there a subset of days where the signal is strong enough to be worth acting on?
 
@@ -109,8 +111,9 @@ The last **20%** of the timeline is held out. A random split would train on days
 Reported metrics:
 
 - **Accuracy** — shown alongside the baseline, never alone
-- **Baseline accuracy** — always predicting the majority class from the training set
-- **Edge** — accuracy minus baseline; the figure that carries the information
+- **Baseline accuracy** — always predicting the majority class from the training set, labelled with which class that actually was
+- **Edge** — accuracy minus baseline
+- **Edge vs naive** — accuracy minus the best constant strategy in the test window; the stricter figure, and the one to read when the market regime changed (see below)
 - **ROC-AUC** — threshold-independent ranking quality; 0.50 is chance
 - **Precision / Recall / F1** — reported for completeness
 - **Confusion matrix**
@@ -146,8 +149,45 @@ The identical pipeline is run across six series:
 | `7203.T` | Toyota (JP) |
 | `6758.T` | Sony (JP) |
 | `^N225` | Nikkei 225 (JP index) |
+| `PTT.BK` | PTT (TH) |
+| `^SET.BK` | SET Index (TH index) |
 
-This tests whether an apparent edge is a property of the *method* or of one particular series. A method with genuine predictive power would show a consistent edge across markets, not a mix of signs. The interface reports the mean edge and how many of the series came out positive.
+This tests whether an apparent edge is a property of the *method* or of one particular series. A method with genuine predictive power would show a consistent edge across markets, not a mix of signs.
+
+---
+
+## Two Baselines, and Why the Second One Matters
+
+The application reports the edge against **two** reference points, because the obvious one turns out to be exploitable.
+
+**Edge** compares the model against the majority class of the *training* period. This is the standard check, and it is the one most projects stop at.
+
+**Edge vs naive** compares against the best constant strategy in the *test* period — always-'Up' or always-'Down', whichever scored higher on those specific days.
+
+When the market direction is stable across both windows, the two figures are identical. When the direction flips between training and test, they diverge, and the first one becomes badly inflated: the model inherits the training-period bias, the baseline it is measured against inherits the same bias, and the model looks good for having been wrong in a slightly less costly way than the reference.
+
+### The clearest example
+
+Running the comparison across all eight series produced this:
+
+| Series | Accuracy | Edge | Edge vs naive | ROC-AUC |
+| --- | --- | --- | --- | --- |
+| Apple (US) | 54.7% | +0.8% | +0.8% | 0.582 |
+| Microsoft (US) | 48.7% | −1.3% | −1.3% | 0.513 |
+| S&P 500 (US) | 52.5% | −3.0% | −3.0% | 0.451 |
+| Toyota (JP) | 41.3% | −9.1% | −9.1% | 0.427 |
+| Sony (JP) | 50.4% | −7.0% | −7.0% | 0.520 |
+| Nikkei 225 (JP) | 50.0% | −3.0% | −3.0% | 0.522 |
+| PTT (TH) | 60.7% | +1.3% | +1.3% | 0.539 |
+| **SET Index (TH)** | **51.6%** | **+8.1%** | **−5.0%** | **0.487** |
+
+Seven of the eight rows agree exactly. The SET Index does not.
+
+Its training window was a falling market, its test window a rising one. Against the training-period majority ('Down') the model appears to gain 8.1% — by a wide margin the strongest result in the table. Against always-'Up', which would have scored 56.6% on those days, the model's 51.6% is 5 points *worse* than doing nothing. Its ROC-AUC of 0.487 — below chance — points the same way.
+
+Measured properly, the mean edge across the eight series is **−3.3%**, positive on **2 of 8**, and both positive cases are around one percentage point on roughly 230 test days, which is inside sampling noise.
+
+The single-ticker view carries the same check: when the model beats the training-period baseline but loses to the best constant strategy in the test window, the interface says so directly rather than displaying the green number alone.
 
 ---
 
@@ -180,9 +220,9 @@ Python · pandas · NumPy · yfinance · scikit-learn · Matplotlib · Streamlit
 - Financial time-series data collection and preprocessing
 - Feature engineering with attention to stationarity and collinearity
 - Leakage-aware experimental design (chronological splits, target alignment)
-- Baseline-relative model evaluation
+- Baseline-relative model evaluation, including recognising when a baseline is itself misleading
 - Threshold and precision–coverage trade-off analysis
-- Robustness testing across independent datasets
+- Robustness testing across independent datasets and market regimes
 - Interactive application development and deployment
 
 ---
@@ -237,11 +277,23 @@ The output is **not a trading signal**.
 
 ### 市場間比較
 
-同一の手法を日米6銘柄・指数に適用します。本当に予測力があるなら、**一貫してベースラインを上回るはず**です。符号が混在する場合、それは偶然の範囲と判断されます。
+同一の手法を日米タイの8銘柄・指数に適用します。本当に予測力があるなら、**一貫してベースラインを上回るはず**です。符号が混在する場合、それは偶然の範囲と判断されます。
+
+### 二つ目のベースライン（本プロジェクトの発見）
+
+検証の過程で、**ベースライン比較そのものが抜け道になり得る**ことが分かりました。
+
+学習期間とテスト期間で相場の方向が反転すると、学習期間の多数派との比較では、実力がなくても数％の「優位」が生まれます。タイのSET指数がその例です。
+
+- 学習期間の多数派（下降）との比較：**+8.1%** — 8銘柄中で最も良い数字
+- テスト期間で最良の単純戦略（毎日「上昇」＝56.6%）との比較：**−5.0%**
+- ROC-AUCは0.487で、ランダム以下
+
+そこで、テスト期間における最良の単純戦略との比較も併記するようにしました。この基準で測ると、8銘柄の平均は**−3.3%**、上回ったのは**2銘柄のみ**です。
 
 ### 結論
 
-本プロジェクトで示したのはモデルの性能ではなく、**検証の設計そのもの**です。効果がなかったことをそのまま報告できることも、分析の重要な一部だと考えています。
+本プロジェクトで示したのはモデルの性能ではなく、**検証の設計そのもの**です。効果がなかったことをそのまま報告できること、そして自分の評価基準自体を疑うことも、分析の重要な一部だと考えています。
 
 ---
 
