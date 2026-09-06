@@ -279,11 +279,13 @@ c4.metric("Precision", f"{metrics['precision']:.1%}")
 c5.metric("Recall", f"{metrics['recall']:.1%}")
 c6.metric("F1", f"{metrics['f1']:.3f}")
 
+pos_is_majority = always_up >= 0.5
 st.caption(
-    "F1 is shown for completeness but is misleading here: predicting 'Up' "
-    "every single day would score higher than the model, because the positive "
-    "class is the majority. ROC-AUC and the edge over baseline are the figures "
-    "that carry information."
+    "F1 is shown for completeness but is hard to read in isolation: 'Up' is "
+    f"the {'majority' if pos_is_majority else 'minority'} class here "
+    f"({always_up:.1%} of test days), so a constant prediction can outscore "
+    "the model on F1 without carrying any information. ROC-AUC and the edge "
+    "over baseline are the figures to read."
 )
 
 best_naive = max(always_up, 1 - always_up)
@@ -468,8 +470,6 @@ st.pyplot(fig)
 
 st.divider()
 st.caption(
-    "F1 is shown for completeness but is misleading here: predicting 'Up' "
-    "every single day would score higher than the model, because the positive "
-    "class is the majority. ROC-AUC and the edge over baseline are the figures "
-    "that carry information."
+    "Limitations: technical indicators only. No fundamentals, macro data, "
+    "sentiment, transaction costs, or liquidity modelling. Not a trading signal."
 )
