@@ -10,7 +10,6 @@ The application retrieves market data from Yahoo Finance, engineers scale-invari
 
 **English Version** https://stocktrend-dcc8wybbjikjdlgtg6j7pj.streamlit.app/
 
-**Japanese Version / 日本語版** https://stocktrend-ibgvicgbw3qbljc623ky3e.streamlit.app/
 
 ---
 
