@@ -436,7 +436,7 @@ if st.button("Run comparison (takes ~30 seconds)"):
                 "The 'Edge' column compares against the training-period "
                 "majority instead, and can be inflated when the direction "
                 "flips between periods."
-            )   
+         )   
             
         
     else:
