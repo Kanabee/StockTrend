@@ -39,6 +39,8 @@ COMPARISON_TICKERS = {
     "7203.T": "Toyota (JP)",
     "6758.T": "Sony (JP)",
     "^N225": "Nikkei 225 (JP index)",
+    "PTT.BK": "PTT (TH)",
+    "^SET.BK": "SET Index (TH index)",
 }
 
 
