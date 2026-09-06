@@ -1,372 +1,250 @@
-
 # 📈 Stock Trend Prediction
 
-A deployed machine-learning web application that classifies next-day stock
-price direction from technical indicators — and reports honestly that it does
-not work.
+A next-day price direction classifier built on technical indicators — and, more importantly, an honest evaluation of whether such a classifier works at all.
 
-**Live demo:** [English](https://stocktrend-dcc8wybbjikjdlgtg6j7pj.streamlit.app/) 
-            [Japan](https://stocktrend-rwojp3jczsj3plndxggegq.streamlit.app/)
----
+The application retrieves market data from Yahoo Finance, engineers scale-invariant features, trains a Logistic Regression model with a chronological hold-out, and reports its performance **against a naive baseline** in an interactive Streamlit interface.
 
-## Result First
+**Educational demonstration. Not investment advice.**
 
-Tested on AAPL over 236 unseen trading days (2025-09-26 → 2026-09-03), trained
-on the preceding 944 days:
+## 🌐 Live Demo
 
-| Metric | Model | Baseline |
-|---|---|---|
-| Accuracy | **54.7%** | 53.8% (always predict "Up") |
-| ROC-AUC | **0.582** | 0.500 |
-| Precision | 56.1% | — |
-| Recall | 72.4% | — |
-| F1 | 0.632 | 0.700 |
+**English Version** https://stocktrend-dcc8wybbjikjdlgtg6j7pj.streamlit.app/
 
-**The model carries no economically meaningful edge.** It beats the naive
-baseline by 0.9 percentage points — about two days out of 236, which is inside
-the range of noise. Precision of 56.1% against recall of 72.4% shows a
-systematic bias toward predicting "Up": the model calls up on 164 of 236 days
-when only 127 actually rise. Acting on that would mean 72 losing entries, and
-transaction costs alone would erase the margin.
-
-ROC-AUC of 0.582 is the one figure above chance that means something on this
-ticker: the model ranks up-days above down-days slightly better than random.
-Restricting to high-conviction days lifts precision to 62.3% at a 0.525
-threshold, 8.5 points above the base rate.
-
-**That apparent signal does not survive contact with other markets.** Run
-across six US and Japanese series, mean ROC-AUC is **0.5015** — chance — and
-the edge over baseline is negative on five of six. Apple's result sits 1.5
-standard deviations above a distribution centred on nothing. See the
-cross-market comparison below.
-
-Note that **F1 is lower than the naive baseline would score.** Predicting "Up"
-every single day yields F1 = 0.700 against the model's 0.632, because the
-positive class is the majority. F1 is reported here only to show why it is the
-wrong headline metric for this problem.
+**Japanese Version / 日本語版** https://stocktrend-ibgvicgbw3qbljc623ky3e.streamlit.app/
 
 ---
 
-## Why This Is the Expected Result
+## What This Project Actually Tests
 
-If daily price direction were predictable from moving averages and RSI alone,
-the edge would have been arbitraged away long ago. A model reporting 90%+
-accuracy on this task is almost always leaking future information — commonly by
-using a random train/test split on time-ordered data, or by including a feature
-unavailable at prediction time.
+Most stock-prediction portfolio projects report an accuracy figure and stop there. That figure is almost always meaningless, for two reasons: it is measured on a randomly shuffled split (which leaks future information into training), and it is never compared against the trivial strategy of predicting the majority class every day.
 
-This project is built to make that failure mode impossible to hide, and to
-report what remains.
+This project asks a narrower and more answerable question:
+
+> **Do price-derived technical indicators carry enough information to predict next-day direction better than a naive baseline — and does any apparent edge hold up across different markets?**
+
+The answer this implementation arrives at is largely **no**, and reporting that plainly is part of the result.
 
 ---
 
 ## Design Decisions
 
-### Scale-invariant features
+The five choices that shape the implementation:
 
-The original implementation fed raw MA5, MA25, MA75, and Bollinger band levels
-directly into the classifier. Those are **price levels**: non-stationary (a
-stock at 50 USD in 2021 and 200 USD in 2026 is the same signal at a different
-scale) and near-perfectly collinear with one another. A linear model given
-those inputs learns the price level, not the direction.
-
-Every feature was rebuilt as a ratio or a bounded index:
-
-| Feature | Definition | Captures |
-|---|---|---|
-| `dev_ma5/25/75` | `Close / MA − 1` | Position relative to trend, in % |
-| `ma5_vs_ma25`, `ma25_vs_ma75` | `MA_short / MA_long − 1` | Crossover signal |
-| `rsi14` | 14-day RSI, Wilder's smoothing | Momentum, bounded 0–1 |
-| `pct_b` | `(Close − Lower) / (Upper − Lower)` | Standard Bollinger %B |
-| `band_width` | `(Upper − Lower) / MA25` | Relative volatility |
-| `ret_1d`, `ret_5d` | Simple returns | Short-horizon momentum |
-| `vol_20d` | Rolling σ of returns | Realized volatility |
-
-Features are standardised inside a scikit-learn `Pipeline`, so scaling is
-fitted on training data only and never sees the test set.
-
-### Chronological split
-
-The last 20% of the timeline is held out. A random split on time-ordered data
-lets the model train on days that follow the days it is tested on — the single
-most common source of inflated results in this kind of project.
-
-### Baseline comparison
-
-Equity markets rise slightly more often than they fall, so a classifier that
-always predicts "Up" scores 52–54% on most series. Every accuracy figure in
-this project is reported against that baseline, because accuracy alone is
-meaningless here.
-
-### Probability, not a label
-
-The app surfaces P(Up) rather than a binary call, so a reader can see when the
-model is at 0.53 and carrying no conviction.
+1. **Features are scale-invariant ratios, not raw price levels.**
+2. **The train/test split is chronological, never random.**
+3. **Model accuracy is always reported against a majority-class baseline.**
+4. **The output is a probability, not just a binary label.**
+5. **Threshold analysis asks the real question:** is there a subset of days where the signal is strong enough to be worth acting on?
 
 ---
 
-## Signal Threshold Analysis
+## Pipeline
 
-A classifier does not have to trade every day. Raising the decision threshold
-trades coverage for precision: fewer signals, each carrying more conviction.
-The app sweeps thresholds from 0.50 to 0.75 and reports precision, coverage,
-and lift over the base rate at each.
+```
+Ticker → Yahoo Finance (5y) → Feature engineering → Chronological split
+       → Logistic Regression → Out-of-sample metrics → Threshold analysis
+       → Cross-market comparison → Next-day signal → Streamlit
+```
 
-Thresholds producing fewer than 20 signals are excluded from the summary.
-Precision computed on a handful of days is sampling noise, and picking the
-threshold with the prettiest number is how backtests get overfitted.
+---
 
-| Threshold | Signals | Coverage | Precision | Lift vs base rate | 95% CI |
-|---|---|---|---|---|---|
-| 0.500 | 164 | 69.5% | 56.1% | +2.3% | [48.5%, 63.7%] |
-| 0.525 | 106 | 44.9% | **62.3%** | **+8.5%** | [53.1%, 71.5%] |
-| 0.550 | 40 | 16.9% | **65.0%** | **+11.2%** | [50.2%, 79.8%] |
-| 0.575 | 12 | 5.1% | 75.0% | — | *excluded, n < 20* |
-| 0.600 | 3 | 1.3% | 66.7% | — | *excluded, n < 20* |
-| 0.625 | 2 | 0.8% | 100.0% | — | *excluded, n < 20* |
+## Data
 
-Base rate: 53.8% of test days rose (127 of 236).
+Historical OHLCV data is retrieved with **yfinance** using `period="5y"` and `auto_adjust=True`, so prices are already adjusted for splits and dividends. Results are cached for one hour.
 
-**Precision rises monotonically with conviction.** At the default 0.50
-cut-off the model is indistinguishable from the baseline. Restricting to days
-where it assigns P(Up) ≥ 0.525 leaves 106 signals at 62.3% precision — 8.5
-points above base rate. At 0.550, 40 signals at 65.0%.
+---
 
-This is consistent with the ROC-AUC of 0.582: the model ranks days better than
-it classifies them. The signal exists in the ordering and the default
-threshold discards it.
+## Feature Engineering
 
-### How much weight this deserves
+Raw MA5 / MA25 / MA75 and Bollinger band levels are **price levels**: non-stationary and near-perfectly collinear with each other. Feeding them to a linear model teaches it the price level rather than the direction. Every feature here is therefore a ratio or a bounded index.
 
-Two things stop this from being a finding rather than a hint.
+| Feature | Definition | What it captures |
+| --- | --- | --- |
+| `dev_ma5` | `Close / MA5 − 1` | Deviation from the short-term trend |
+| `dev_ma25` | `Close / MA25 − 1` | Deviation from the medium-term trend |
+| `dev_ma75` | `Close / MA75 − 1` | Deviation from the long-term trend |
+| `ma5_vs_ma25` | `MA5 / MA25 − 1` | Short vs medium trend alignment (crossover, continuous) |
+| `ma25_vs_ma75` | `MA25 / MA75 − 1` | Medium vs long trend alignment |
+| `rsi14` | 14-day RSI ÷ 100 | Momentum, bounded 0–1 |
+| `pct_b` | `(Close − Lower) / (Upper − Lower)` | Position within the Bollinger band |
+| `band_width` | `(Upper − Lower) / MA25` | Volatility regime |
+| `ret_1d` | 1-day return | Short-term reversal / momentum |
+| `ret_5d` | 5-day return | Week-scale momentum |
+| `vol_20d` | 20-day std of daily returns | Realised volatility |
 
-**Sample size.** At threshold 0.525, precision is 62.3% ± 9.2 points at 95%
-confidence — a one-sided z of 1.80, p = 0.036. Suggestive on its own.
+RSI is computed with Wilder's exponential smoothing (`ewm(alpha=1/14)`) rather than a simple rolling mean.
 
-**Selection.** Eleven thresholds were swept and the best chosen after seeing
-the test set. Adjusting for that (Bonferroni, ×11) takes p to 0.39. The result
-does not survive a correction for having looked eleven times.
+Bollinger bands use `MA25 ± 2 × 25-day standard deviation`; they enter the model only through `pct_b` and `band_width`.
 
-**The 0.625 row is the argument for the exclusion rule.** It shows 100%
-precision — on two days. Without a minimum-signal filter, that row is what a
-careless write-up would headline.
+---
 
-The honest summary: a conviction filter appears to recover a real ranking
-signal, but the evidence is one ticker over one test period and does not clear
-a multiple-comparison correction. Confirming it requires walk-forward
-validation across several markets and periods, and a backtest with transaction
-costs — 40 trades at 65% precision says nothing about profit until the size of
-the winning and losing moves is known.
+## Target
+
+```
+target = 1  if  Close[t+1] > Close[t]
+target = 0  otherwise
+```
+
+The final row is dropped, since tomorrow's close is unknown for the most recent day. This is the point where next-day leakage would otherwise occur.
+
+---
+
+## Model
+
+```python
+Pipeline([
+    ("scaler", StandardScaler()),
+    ("clf", LogisticRegression(max_iter=1000, C=1.0)),
+])
+```
+
+Logistic Regression is chosen deliberately over a stronger model: its standardised coefficients are directly interpretable and comparable, which makes it a good instrument for establishing whether the *features* carry signal before reaching for model capacity. Scaling sits inside the pipeline so the scaler is fitted on training data only.
+
+---
+
+## Evaluation
+
+The last **20%** of the timeline is held out. A random split would train on days that come after the test days, which inflates accuracy substantially and invalidates the result.
+
+Reported metrics:
+
+- **Accuracy** — shown alongside the baseline, never alone
+- **Baseline accuracy** — always predicting the majority class from the training set
+- **Edge** — accuracy minus baseline; the figure that carries the information
+- **ROC-AUC** — threshold-independent ranking quality; 0.50 is chance
+- **Precision / Recall / F1** — reported for completeness
+- **Confusion matrix**
+
+F1 is deliberately flagged as misleading in the interface: because up-days are the majority class, predicting "Up" unconditionally scores higher on F1 than the model does. When the edge is zero or negative, the application says so explicitly rather than burying it.
+
+---
+
+## Threshold Analysis
+
+A classifier does not have to take a position every day. Raising the decision threshold above 0.50 trades coverage for precision: fewer signals, each carrying more conviction.
+
+The application sweeps thresholds from 0.50 to 0.75 and reports, for each:
+
+- **Signals** — number of days the threshold fires
+- **Coverage** — share of test days signalled
+- **Precision** — hit rate on those days
+- **Lift vs base rate** — precision minus the unconditional up-day rate
+
+Rows producing fewer than **20 signals** are marked unreliable and excluded from the "best threshold" selection. Precision computed on a handful of days is sampling noise, not evidence — and omitting this guard is how spurious edges get reported.
 
 ---
 
 ## Cross-Market Comparison
 
-The same pipeline is run across US and Japanese equities and indices — AAPL,
-MSFT, S&P 500, Toyota (7203.T), Sony (6758.T), Nikkei 225 — to test whether
-any apparent edge belongs to the method or to one particular series.
+The identical pipeline is run across six series:
 
-A method with genuine predictive power shows a consistent edge across markets.
-A mix of positive and negative edges indicates noise.
+| Ticker | Market |
+| --- | --- |
+| `AAPL` | Apple (US) |
+| `MSFT` | Microsoft (US) |
+| `^GSPC` | S&P 500 (US index) |
+| `7203.T` | Toyota (JP) |
+| `6758.T` | Sony (JP) |
+| `^N225` | Nikkei 225 (JP index) |
 
-| Series | Accuracy | Baseline | Edge | ROC-AUC | Test days |
-|---|---|---|---|---|---|
-| Apple (US) | 54.7% | 53.8% | **+0.8%** | 0.582 | 236 |
-| Microsoft (US) | 48.7% | 50.0% | −1.3% | 0.513 | 236 |
-| S&P 500 (US) | 52.5% | 55.5% | −3.0% | 0.451 | 236 |
-| Toyota (JP) | 41.7% | 50.0% | −8.3% | 0.429 | 230 |
-| Sony (JP) | 50.4% | 57.0% | −6.5% | 0.515 | 230 |
-| Nikkei 225 (JP) | 49.1% | 53.0% | −3.9% | 0.519 | 230 |
-
-**Mean edge: −3.7%. Positive on 1 of 6.**
-
-**Mean ROC-AUC across the six series: 0.5015** — indistinguishable from chance
-(sd 0.055, t = 0.07). Individual values scatter symmetrically around 0.50:
-Apple sits 0.082 above, Toyota 0.071 below.
-
-### This settles the question
-
-Apple's 0.582 is **1.5 standard deviations above the cross-market mean** — the
-top of a distribution centred on chance, not evidence of a method that works.
-The threshold result above is best read the same way: it was the best of eleven
-thresholds on the best of six series.
-
-The method does not generalise. Applied to five other liquid, well-covered
-markets, it loses to a naive baseline every time, and loses most on the
-Japanese equities. Whatever pattern the model found in Apple's 2025–2026 price
-history is a property of that series and that window.
-
-**This was the point of running the comparison.** A single-ticker result with a
-positive-looking number is the easiest way to fool yourself in this kind of
-work, and the cheapest correction is to run the identical pipeline elsewhere
-before believing it.
+This tests whether an apparent edge is a property of the *method* or of one particular series. A method with genuine predictive power would show a consistent edge across markets, not a mix of signs. The interface reports the mean edge and how many of the series came out positive.
 
 ---
 
-## How It Works
+## Next-Day Signal
+
+After evaluation, the model is refitted on the full dataset and applied to the most recent row of features. The output is a direction, a confidence figure, and — critically — the raw probability:
 
 ```
-Ticker → yfinance API → 5 years of daily data → scale-invariant features
-    → chronological split → Logistic Regression → out-of-sample evaluation
-    → threshold analysis → P(Up) → Streamlit
+P(Up) = 0.512   →   values near 0.50 carry no meaningful signal
 ```
 
-The model is retrained per session on the ticker the user enters, so the
-application demonstrates the full pipeline rather than serving a pre-fitted
-artefact.
+Standardised model coefficients are exposed in an expander, sorted by absolute magnitude, so feature influence can be inspected directly.
 
 ---
 
-## Limitations
+## Price History
 
-- **Technical indicators only.** No fundamentals, macroeconomic variables,
-  news, or sentiment.
-- **No transaction costs or liquidity modelling.** Any apparent edge would need
-  to survive spreads, commissions and slippage before meaning anything.
-- **Single chronological split**, not walk-forward validation. The result
-  reflects one test period.
-- **Logistic Regression only.** Tree-based and gradient-boosted models were not
-  compared.
-- **Historical relationships do not guarantee future performance.**
-
-Predictions from this application are **not investment advice or trading
-signals**. The project exists to demonstrate an analytical pipeline and honest
-model evaluation.
-
----
-
-## Next Steps
-
-- Walk-forward validation across multiple non-overlapping test windows.
-- A backtest incorporating transaction costs, to convert accuracy into
-  something with an economic interpretation.
-- Comparison against Random Forest and gradient boosting.
-- Additional features: volume, MACD, sector-relative returns.
-- Probability calibration, so a stated 0.60 corresponds to a 60% outcome rate.
+Five years of closing prices with MA5, MA25 and MA75 overlaid.
 
 ---
 
 ## Tech Stack
 
-Python · Pandas · NumPy · Scikit-learn · yfinance · Matplotlib · Streamlit
+Python · pandas · NumPy · yfinance · scikit-learn · Matplotlib · Streamlit
 
-## Running Locally
+---
 
-```bash
-pip install -r requirements.txt
-streamlit run code.py
-```
+## Skills Demonstrated
+
+- Financial time-series data collection and preprocessing
+- Feature engineering with attention to stationarity and collinearity
+- Leakage-aware experimental design (chronological splits, target alignment)
+- Baseline-relative model evaluation
+- Threshold and precision–coverage trade-off analysis
+- Robustness testing across independent datasets
+- Interactive application development and deployment
+
+---
+
+## Limitations
+
+- Price-derived technical indicators only — no fundamentals, macro data, or sentiment
+- Transaction costs, slippage and liquidity are not modelled, so reported precision does not translate into returns
+- Predicted probabilities are uncalibrated; `P(Up) = 0.62` does not mean a 62% hit rate
+- A single chronological hold-out, not walk-forward validation
+- No backtest — direction accuracy and profitability are different questions
+- Direction only; a 0.1% gain and an 8% gain are the same label
+
+The output is **not a trading signal**.
+
+---
+
+## Future Work
+
+- Walk-forward validation across rolling windows
+- Probability calibration (Platt scaling / isotonic regression)
+- Longer-horizon targets (5–20 day direction), where the signal-to-noise ratio is more favourable than at 1 day
+- Volatility forecasting, which is substantially more predictable than direction
+- Volume-based and cross-asset features
+- Comparison against Random Forest and gradient-boosted trees
+- A cost-aware backtest
 
 ---
 
 # 🇯🇵 日本語概要
 
-## 株価トレンド予測 Web アプリケーション
+## 株価トレンド予測アプリ
 
-テクニカル指標を用いて翌営業日の株価方向を分類する機械学習アプリケーションを
-開発し、日英2言語版としてデプロイしました。
+本プロジェクトは、テクニカル指標を用いて**翌営業日の株価の方向（上昇・下降）を分類する機械学習アプリケーション**です。
 
-### 結論：本モデルに実務上有意な予測力はありません
+ただし、目的は予測を当てることではありません。**「価格由来のテクニカル指標だけで方向を予測できるのか」を正しく検証すること**が目的です。
 
-AAPL を対象に、学習944日・検証236日（2025-09-26 〜 2026-09-03）の時系列順分割
-で評価した結果は以下の通りです。
+### 特徴量
 
-| 指標 | モデル | ベースライン |
-|---|---|---|
-| 正解率 | **54.7%** | 53.8%（常に「上昇」と予測） |
-| ROC-AUC | **0.582** | 0.500 |
-| 適合率 | 56.1% | — |
-| 再現率 | 72.4% | — |
+移動平均線・RSI・ボリンジャーバンドを使用しますが、**そのままの値は使いません**。価格の水準は非定常であり、移動平均線同士は強く相関するため、線形モデルには不向きです。そのため、すべて比率または0〜1に収まる指標に変換しています（例：`終値 ÷ MA25 − 1`）。全11特徴量。
 
-ベースラインとの差は 0.9 ポイント、236日中およそ2日分に相当し、誤差の範囲内
-です。また、適合率56.1%に対し再現率72.4%という結果は、モデルが「上昇」側に
-偏った予測をしていることを示します。実際には127日しか上昇していないにもかかわ
-らず164日を上昇と予測しており、72回の誤ったエントリーは取引コストだけで利益を
-消失させます。
+### 評価設計
 
-**この結果は想定通りです。** 移動平均やRSIのみから日次の値動きが予測できるので
-あれば、その優位性はとうに市場で解消されているはずです。正解率90%超を報告する
-モデルは、多くの場合リークを含んでいます。本プロジェクトは、そのリークが起こり
-得ない構造を作った上で、残った結果をそのまま報告することを目的としています。
+- データ分割は**時系列順**（ランダム分割はデータリーケージを起こします）
+- 精度は必ず**ベースライン**（毎日「上昇」と答える単純な手法）と比較して表示
+- ROC-AUC、混同行列、閾値ごとの適合率も報告
+- 有効な予測力がない場合、その旨を明示的に警告として表示
 
-### 手法上の工夫
+### 閾値分析
 
-**1. スケール不変な特徴量への変換**
-当初の実装では移動平均やボリンジャーバンドを価格の水準のまま特徴量としていま
-した。これらは非定常であり（2021年の50ドルと2026年の200ドルは同じシグナルの
-異なるスケール）、相互に強く相関するため、線形モデルは「方向」ではなく「価格
-水準」を学習してしまいます。そこで、移動平均乖離率、%B、バンド幅比率、実現
-ボラティリティなど、すべて比率または有界指標に置き換えました。
+毎日ポジションを取る必要はありません。閾値を上げることで、シグナル数と適合率のトレードオフを検証します。シグナルが20件未満の行は、統計的に意味がないため除外しています。
 
-**2. 時系列順の分割**
-ランダム分割では、テスト対象日より後の日を学習に使ってしまいます。これはこの種
-のプロジェクトで結果が過大評価される最大の原因であり、直近20%を時系列順に
-ホールドアウトすることで回避しています。
+### 市場間比較
 
-**3. ベースラインとの比較を必須化**
-株式市場は下落より上昇の日がやや多いため、「常に上昇」と予測するだけで52〜54%
-の正解率が得られます。この比較なしに正解率を報告することに意味はありません。
+同一の手法を日米6銘柄・指数に適用します。本当に予測力があるなら、**一貫してベースラインを上回るはず**です。符号が混在する場合、それは偶然の範囲と判断されます。
 
-**4. しきい値分析**
-分類器は毎日取引する必要はありません。判定しきい値を上げれば、シグナル数と
-引き換えに確信度の高い日だけを選別できます。
+### 結論
 
-| しきい値 | シグナル数 | 適合率 | ベースライン比 |
-|---|---|---|---|
-| 0.500 | 164 | 56.1% | +2.3% |
-| 0.525 | 106 | **62.3%** | **+8.5%** |
-| 0.550 | 40 | **65.0%** | **+11.2%** |
-| 0.625 | 2 | 100.0% | 除外（n<20） |
+本プロジェクトで示したのはモデルの性能ではなく、**検証の設計そのもの**です。効果がなかったことをそのまま報告できることも、分析の重要な一部だと考えています。
 
-確信度を上げるにつれて適合率が単調に上昇しており、これは ROC-AUC 0.582 と整合
-します。つまりモデルは「分類」よりも「順位付け」に情報を持っており、既定の
-しきい値0.50がその情報を捨てていたことになります。
+---
 
-**ただし、この結果は「発見」ではなく「示唆」に留めるべきです。** しきい値0.525
-における適合率62.3%は95%信頼区間で ±9.2ポイント（片側 z = 1.80、p = 0.036）
-であり、単独では有意水準を満たすものの、11通りのしきい値を検証した上で最良の
-ものを事後的に選択しているため、多重比較補正（Bonferroni ×11）を行うと
-p = 0.39 となり有意性は失われます。
+## Disclaimer
 
-なお、しきい値0.625の行は適合率100%を示していますが、これはわずか2日分の結果
-です。シグナル数20件未満を集計から除外している理由がここにあります。この種の
-数値を成果として提示することが、バックテストにおける過剰適合そのものです。
-
-**5. 複数市場での再現性検証**
-同一のパイプラインを米国・日本の6銘柄／指数に適用し、AAPLで見られた優位性が
-「手法の性質」か「特定銘柄の性質」かを検証しました。
-
-| 銘柄 | 正解率 | ベースライン | 差 | ROC-AUC |
-|---|---|---|---|---|
-| Apple (US) | 54.7% | 53.8% | **+0.8%** | 0.582 |
-| Microsoft (US) | 48.7% | 50.0% | −1.3% | 0.513 |
-| S&P 500 | 52.5% | 55.5% | −3.0% | 0.451 |
-| トヨタ (JP) | 41.7% | 50.0% | −8.3% | 0.429 |
-| ソニー (JP) | 50.4% | 57.0% | −6.5% | 0.515 |
-| 日経225 | 49.1% | 53.0% | −3.9% | 0.519 |
-
-**平均 ROC-AUC は 0.5015 であり、偶然と区別できません**（標準偏差0.055）。
-各銘柄の値は0.50を中心にほぼ対称に分布しており（AAPLは+0.082、トヨタは
-−0.071）、ベースラインを上回ったのは6銘柄中1銘柄のみ、平均では −3.7% でした。
-
-**この検証により結論が確定します。** AAPLの ROC-AUC 0.582 は、平均から標準
-偏差1.5個分上振れした値に過ぎず、手法に予測力があることを示すものではありま
-せん。前項のしきい値分析の結果も同様に、「6銘柄中で最も良かった銘柄における、
-11通り中で最も良かったしきい値」であったと解釈するのが妥当です。
-
-単一銘柄の良好な結果をそのまま受け入れることが、この種の分析における最大の
-落とし穴です。同一パイプラインを他市場に適用するという最も安価な検証を行った
-上で結論を出す設計としました。
-
-**6. 二値ラベルではなく確率を出力**
-P(Up) を表示することで、モデルが0.53という「確信のない状態」にあることを利用者
-が判断できるようにしました。
-
-### 限界
-
-テクニカル指標のみを使用しており、ファンダメンタルズ、マクロ経済指標、ニュース、
-市場センチメントは含んでいません。取引コストおよび流動性も考慮していません。
-検証は単一期間の時系列分割によるものであり、ウォークフォワード検証は未実施です。
-
-本アプリケーションの予測は投資判断のためのシグナルではなく、分析プロセスとモデル
-評価手法の実証を目的としたものです。
+For educational and portfolio purposes only. Nothing here constitutes financial advice or an investment recommendation.
