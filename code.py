@@ -427,17 +427,18 @@ if st.button("Run comparison (takes ~30 seconds)"):
             ),
             use_container_width=True,
         )
-            mean_edge = comp["Edge vs naive"].mean()
-            n_positive = int((comp["Edge vs naive"] > 0).sum())
-            st.caption(
-                f"Measured against the best constant strategy in          each test "
+             mean_edge = comp["Edge vs naive"].mean()
+             n_positive = int((comp["Edge vs naive"] > 0).sum())
+             st.caption(
+                f"Measured against the best constant strategy in each test "
                 f"window, the mean edge across {len(comp)} series is "
                 f"{mean_edge:+.1%}, positive on {n_positive} of {len(comp)}. "
                 "The 'Edge' column compares against the training-period "
                 "majority instead, and can be inflated when the direction "
                 "flips between periods."
+            )   
             
-        )
+        
     else:
         st.warning("No comparison data could be retrieved.")
 
