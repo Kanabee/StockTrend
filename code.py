@@ -150,6 +150,8 @@ def evaluate(X: pd.DataFrame, y: pd.Series) -> dict:
     baseline_pred = np.full(len(y_test), majority)
 
     return {
+         
+        "majority": majority,
         "n_train": len(X_train),
         "n_test": len(X_test),
         "test_start": X_test.index[0].date(),
@@ -259,7 +261,17 @@ st.write(
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Accuracy", f"{metrics['accuracy']:.1%}", f"{edge:+.1%} vs baseline")
-c2.metric("Baseline (always 'Up')", f"{metrics['baseline_accuracy']:.1%}")
+majority_label = "Up" if metrics["majority"] == 1 else "Down"
+always_up = metrics["up_rate_test"]
+c2.metric(
+    f"Baseline (always '{majority_label}')",
+    f"{metrics['baseline_accuracy']:.1%}",
+    help=(
+        f"'{majority_label}' was the majority class in the training period. "
+        f"For reference, always-'Up' would score {always_up:.1%} on this "
+        f"test window, always-'Down' {1 - always_up:.1%}."
+    ),
+)
 c3.metric("ROC-AUC", f"{metrics['roc_auc']:.3f}")
 
 c4, c5, c6 = st.columns(3)
@@ -274,11 +286,22 @@ st.caption(
     "that carry information."
 )
 
+best_naive = max(always_up, 1 - always_up)
+naive_label = "Up" if always_up >= 0.5 else "Down"
+
 if edge <= 0:
     st.warning(
         "This model does not beat the naive baseline on the test period. "
         "Reporting that plainly is part of the analysis: a directional edge "
         "from price-based indicators alone is not something to expect."
+    )
+elif metrics["accuracy"] < best_naive:
+    st.warning(
+        f"The positive edge above is measured against the **training-period** "
+        f"majority ('{majority_label}'). The direction flipped in the test "
+        f"window: always-'{naive_label}' would have scored {best_naive:.1%}, "
+        f"above the model's {metrics['accuracy']:.1%}. The apparent edge "
+        "reflects a regime change, not predictive skill."
     )
 
 with st.expander("Confusion matrix"):
@@ -445,6 +468,8 @@ st.pyplot(fig)
 
 st.divider()
 st.caption(
-    "Limitations: technical indicators only. No fundamentals, macro data, "
-    "sentiment, transaction costs, or liquidity modelling. Not a trading signal."
+    "F1 is shown for completeness but is misleading here: predicting 'Up' "
+    "every single day would score higher than the model, because the positive "
+    "class is the majority. ROC-AUC and the edge over baseline are the figures "
+    "that carry information."
 )
