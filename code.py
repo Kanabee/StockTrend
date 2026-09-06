@@ -444,9 +444,7 @@ if st.button("Run comparison (takes ~45 seconds)"):
         st.warning("No comparison data could be retrieved.")
             
         
-    else:
-        st.warning("No comparison data could be retrieved.")
-
+    
 # --- Live prediction
 st.subheader("Next-day signal")
 final_model = make_model().fit(X, y)
