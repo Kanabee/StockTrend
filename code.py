@@ -216,15 +216,18 @@ def evaluate_ticker(ticker: str):
     if len(X) < 250:
         return None
     m = evaluate(X, y)
+    
+    best_naive = max(m["up_rate_test"], 1 - m["up_rate_test"])
     return {
         "Accuracy": m["accuracy"],
         "Baseline": m["baseline_accuracy"],
         "Edge": m["accuracy"] - m["baseline_accuracy"],
+        "Best naive": "{:.1%}",
+        "Edge vs naive": "{:+.1%}",
         "ROC-AUC": m["roc_auc"],
         "Up rate": m["up_rate_test"],
         "Test days": m["n_test"],
     }
-
 
 # ----------------------------------------------------------------------
 # 5. Streamlit UI
