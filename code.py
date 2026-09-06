@@ -427,7 +427,7 @@ if st.button("Run comparison (takes ~30 seconds)"):
             ),
             use_container_width=True,
         )
-        mmean_edge = comp["Edge vs naive"].mean()
+        mean_edge = comp["Edge vs naive"].mean()
             n_positive = int((comp["Edge vs naive"] > 0).sum())
             st.caption(
                 f"Measured against the best constant strategy in each test "
